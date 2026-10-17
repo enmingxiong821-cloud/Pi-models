@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: 端到端自测（进程内打桩，不依赖网络与 pi）
+        run: node tools/smoke-test.mjs
+
+      - name: 切换扩展单测
+        run: node tools/extension-test.mjs
+
+      - name: pi RPC 集成测试（未安装 pi 的机器会自动跳过）
+        run: node tools/rpc-test.mjs

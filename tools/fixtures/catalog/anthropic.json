@@ -1,0 +1,14 @@
+{
+  "anthropic-messages": {
+    "chat:claude-sonnet-4-5": {
+      "id": "claude-sonnet-4-5",
+      "name": "Claude Sonnet 4.5 (fixture)",
+      "api": "anthropic-messages",
+      "reasoning": true,
+      "input": ["text", "image"],
+      "contextWindow": 200000,
+      "maxTokens": 64000,
+      "cost": { "input": 3, "output": 15, "cacheRead": 0.3, "cacheWrite": 3.75 }
+    }
+  }
+}

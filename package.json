@@ -1,0 +1,43 @@
+{
+  "name": "pi-model-hub",
+  "version": "0.1.0",
+  "description": "把任意第三方 API（中转站 / 自建网关）接进 pi，并在 pi 里一键切换模型",
+  "type": "module",
+  "bin": {
+    "pmh": "bin/pmh.mjs"
+  },
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-coding-agent",
+    "llm",
+    "relay",
+    "openai-compatible",
+    "model-switcher",
+    "cli"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/enmingxiong821-cloud/pi-model.git"
+  },
+  "bugs": {
+    "url": "https://github.com/enmingxiong821-cloud/pi-model/issues"
+  },
+  "homepage": "https://github.com/enmingxiong821-cloud/pi-model#readme",
+  "scripts": {
+    "pmh": "node bin/pmh.mjs",
+    "test": "node tools/smoke-test.mjs && node tools/extension-test.mjs && node tools/rpc-test.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "extensions",
+    "README.md",
+    "README.en.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  }
+}
