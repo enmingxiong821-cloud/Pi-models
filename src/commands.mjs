@@ -4,10 +4,12 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { loadCatalog, buildModelEntry } from "./catalog.mjs";
+import { maskKey, parseEndpoint, readClipboard } from "./clipboard.mjs";
 import { searchModels } from "./match.mjs";
 import { pickOne } from "./picker.mjs";
 import { configPaths, findPiInstall, findPiLauncher, resolveAgentDir } from "./paths.mjs";
-import { API_KINDS, apiFamily, baseUrlFor, fetchModels, probeChat, fetchRatioConfig } from "./relay.mjs";
+import { askConfirm, askSecret, askText, isInteractive, noteNonInteractive } from "./prompt.mjs";
+import { API_KINDS, apiFamily, baseUrlFor, fetchModels, probeChat, fetchRatioConfig, suggestName } from "./relay.mjs";
 import { c, fail, heading, info, log, ok, readJson, rootOf, table, truncate, warn, writeJson } from "./util.mjs";
 
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -95,9 +97,65 @@ async function discoverIds(ctx, { name, root, api, key, flags }) {
     }
     return { ids: res.ids, source: `${res.url}` };
   } catch (err) {
-    warn(`拉取模型列表出错：${err.message}`);
+    const proxyHint = process.env.HTTPS_PROXY || process.env.HTTP_PROXY ? `（当前代理 ${process.env.HTTPS_PROXY ?? process.env.HTTP_PROXY}，不通可用 --proxy 指定或设 PMH_NO_PROXY=1 直连）` : "";
+    warn(`拉取模型列表出错：${err.message}${proxyHint}`);
     return { ids: [], source: "拉取失败" };
   }
+}
+
+/**
+ * 一键配置：`pmh quick <地址> [key]`，没给的部分从剪贴板里认。
+ * 全程尽量不问问题，最后直接让用户挑一个默认模型。
+ */
+export async function cmdQuick(ctx, urlArg, keyArg, flags) {
+  const tty = isInteractive();
+  let url = urlArg ?? flags.base ?? flags.baseUrl ?? "";
+  let key = keyArg ?? flags.key ?? "";
+
+  if (!url || !key) {
+    const parsed = parseEndpoint(readClipboard());
+    if (!url && parsed.url) {
+      url = parsed.url;
+      info(`从剪贴板读到地址：${url}`);
+    }
+    if (!key && parsed.key) {
+      key = parsed.key;
+      info(`从剪贴板读到密钥：${maskKey(key)}`);
+    }
+  }
+  if (!url && tty) url = await askText("中转站地址（可带或不带 /v1）");
+  if (!url) {
+    throw new Error("没拿到地址。用法：pmh quick <地址> [key]；或者先把「地址 + key」复制到剪贴板，再运行 pmh quick");
+  }
+  if (!key && tty) key = await askSecret("API Key（留空则稍后再补）");
+  if (!key) warn("没有 Key：不需要鉴权的端点可以继续，否则稍后用 pmh key <名称> <key> 补上");
+
+  const name = normalizeProviderName(flags.as ?? suggestName(rootOf(url)));
+  info(`配置 provider "${name}"`);
+  await cmdAdd(ctx, name, { ...flags, base: url, key: key || undefined, yes: true, force: true });
+
+  const entries = (loadModels(ctx).providers[name]?.models ?? []).map((m) => ({
+    provider: name,
+    model: m.id,
+    name: m.name ?? m.id,
+    contextWindow: m.contextWindow,
+    reasoning: m.reasoning,
+  }));
+  if (!entries.length) {
+    warn(`这个端点没返回模型列表。稍后重试：pmh sync ${name}`);
+    return;
+  }
+  if (!tty) {
+    info(`可用模型 ${entries.length} 个。切换：pmh use ${name}#<模型>`);
+    return;
+  }
+
+  const chosen = await pickOne(entries, {
+    title: `选择默认模型（${name} 共 ${entries.length} 个）`,
+    label: (e) => `${e.model}${e.contextWindow ? c.dim(`  ${Math.round(e.contextWindow / 1000)}K`) : ""}${e.reasoning ? c.dim("  思考") : ""}`,
+  });
+  if (chosen) await cmdUse(ctx, `${name}#${chosen.model}`, {});
+  else info(`已保存 ${name}，随时可以 pmh use ${name}#<模型> 切换`);
 }
 
 function buildModelList(ids, { ctx, providerApi, providerBaseUrl, rules, costMode, costMultiplier, previous = {} }) {
@@ -139,27 +197,67 @@ function printModelReport(report, { verbose }) {
   }
 }
 
-export async function cmdAdd(ctx, name, flags) {
-  const id = normalizeProviderName(name);
-  const base = flags.base ?? flags.baseUrl;
-  if (!base) throw new Error("缺少 --base <中转站地址>，例如 --base https://api.example.com（可带或不带 /v1）");
-  const root = rootOf(base);
+/**
+ * 接入一个第三方端点。带参数走脚本模式，不带给参数就变成向导：
+ * 地址 → 名称 → Key → 读模型列表 → 写入 → 立刻挑一个模型设为默认。
+ */
+export async function cmdAdd(ctx, nameArg, flags) {
+  const tty = isInteractive();
+  let base = flags.base ?? flags.baseUrl;
+  if (!base) {
+    if (!tty) {
+      noteNonInteractive();
+      throw new Error("缺少 --base <中转站地址>");
+    }
+    base = await askText("中转站地址（可带或不带 /v1）");
+    if (!base) throw new Error("没有填地址，已取消。");
+  }
+  let root = rootOf(base);
   const api = flags.api ?? "openai-completions";
   if (!API_KINDS.includes(api)) throw new Error(`不支持的 --api: ${api}（可选 ${API_KINDS.join(" / ")}）`);
   const rules = parseApiRules([].concat(flags.apiRule ?? []));
-  const key = flags.key ?? (flags.keyEnv ? `$${flags.keyEnv}` : null);
-  const literalKey = flags.key ?? (flags.keyEnv ? process.env[flags.keyEnv] : null);
+
+  let id = nameArg ? normalizeProviderName(nameArg) : null;
+  if (!id) {
+    const suggestion = suggestName(root);
+    if (tty) id = normalizeProviderName(await askText("给它起个名字（pi 里的 provider 名）", { defaultValue: suggestion }));
+    else {
+      id = normalizeProviderName(suggestion);
+      info(`未指定名称，按地址推断为 "${id}"`);
+    }
+  }
 
   const models = loadModels(ctx);
   if (models.providers[id] && !flags.force) {
-    warn(`provider "${id}" 已存在，继续会更新它（加 --force 跳过确认）`);
+    if (tty && !(await askConfirm(`provider "${id}" 已存在，更新它吗？`))) return info("已取消。");
+    if (!tty) warn(`provider "${id}" 已存在，继续会更新它（加 --force 跳过确认）`);
   }
   const previous = Object.fromEntries((models.providers[id]?.models ?? []).map((m) => [m.id, m]));
+
+  let literalKey = flags.key ?? (flags.keyEnv ? process.env[flags.keyEnv] : null);
+  if (!literalKey && tty && flags.noKey !== false) {
+    literalKey = await askSecret(`粘贴 ${id} 的 API Key（留空则稍后再补）`);
+  }
 
   const costMultiplier = Number(flags.costMultiplier ?? 1) || 1;
   const costMode = flags.noCost ? "off" : flags.cost === "scaled" || flags.costMultiplier ? "scaled" : "official";
 
-  const { ids, source } = await discoverIds(ctx, { name: id, root, api, key: literalKey, flags });
+  let { ids, source } = await discoverIds(ctx, { name: id, root, api, key: literalKey, flags });
+  // 拉不到模型多半是 Key 或地址的问题，交互模式下给一次改的机会
+  while (!ids.length && tty && !flags.noSync && !flags.dryRun) {
+    if (!(await askConfirm("没拿到模型列表。要不要改地址或 Key 再试一次？", { defaultValue: false }))) break;
+    root = rootOf(await askText("中转站地址（回车保持原值）", { defaultValue: root }));
+    const retryKey = await askSecret("API Key（回车保持原值）");
+    if (retryKey) literalKey = retryKey;
+    ({ ids, source } = await discoverIds(ctx, { name: id, root, api, key: literalKey, flags }));
+  }
+
+  if (ids.length) {
+    heading(`读取到 ${ids.length} 个模型`);
+    const preview = ids.slice(0, 12).join("、");
+    log(`  ${preview}${ids.length > 12 ? ` …等 ${ids.length} 个` : ""}`);
+  }
+
   const { entries, report } = buildModelList(ids, {
     ctx,
     providerApi: api,
@@ -185,6 +283,8 @@ export async function cmdAdd(ctx, name, flags) {
     return;
   }
 
+  if (tty && !flags.yes && !(await askConfirm(`写入 pi 配置吗？（${ctx.paths.models}）`))) return info("已取消。");
+
   models.providers[id] = provider;
   const backup = writeJson(ctx.paths.models, models);
   ok(`已写入 ${ctx.paths.models}${backup ? `（备份：${path.basename(backup)}）` : ""}`);
@@ -204,10 +304,25 @@ export async function cmdAdd(ctx, name, flags) {
   log(`  模型数     ${entries.length}${entries.length ? "" : "（用 pmh sync 重新同步，或 --model 手动指定）"}`);
   log(`  模型清单   ${source}`);
   if (report.length) printModelReport(report, { verbose: flags.verbose });
+
+  // 刚读完列表，顺手就把默认模型选掉，这是"接入即可用"的最后一公里
+  if (tty && entries.length && !flags.yes) {
+    if (await askConfirm("现在就挑一个模型设为默认吗？")) {
+      const chosen = await pickOne(
+        entries.map((e) => ({ provider: id, model: e.id, name: e.name, contextWindow: e.contextWindow, reasoning: e.reasoning })),
+        {
+          title: `${id} 的模型`,
+          label: (e) => `${e.model}${e.contextWindow ? c.dim(`  ${Math.round(e.contextWindow / 1000)}K`) : ""}${e.reasoning ? c.dim("  思考") : ""}`,
+        },
+      );
+      if (chosen) await cmdUse(ctx, `${id}#${chosen.model}`, {});
+    }
+  }
+
   log("");
-  info(`下一步：pmh test ${id}        验证连通性`);
-  info(`        pmh use ${id}         设为默认（在 pi 里按 Ctrl+P 也能切）`);
-  info(`        pmh run ${id}         直接用这个中转站启动 pi`);
+  info(`在 pi 里输入 /switch 就能切（中转站的模型排最前），快捷键 Ctrl+Shift+M`);
+  info(`命令行：pmh pick / pmh use ${id}#<模型> / pmh run ${id}#<模型>`);
+  info(`体检：  pmh test ${id}`);
 }
 
 export async function cmdSync(ctx, name, flags) {
@@ -560,7 +675,9 @@ export function printHelp() {
   log(`${c.bold("pmh")} — 让 pi 接入任意第三方 API（中转站 / 自建网关）并随时切换
 
 ${c.bold("最快路径（接入 → 切换）")}
-  pmh add crow5 --base https://xxx.crow5.com --key sk-xxx
+  pmh quick                          # 一键：地址 + Key（Key 可从剪贴板读）→ 读模型列表 → 挑默认模型
+  pmh add                            # 向导：问地址 → 问 Key → 读模型列表 → 立刻挑选
+  pmh add crow5 --base https://xxx.crow5.com --key sk-xxx   # 或者一条命令带参数搞定
   pmh test crow5
   pmh pick          # ↑↓ 选模型，选中即设为默认
   pmh run sonnet    # 关键词模糊匹配，直接用这个模型启动 pi
@@ -574,12 +691,17 @@ ${c.bold("在 pi 里秒切（需先 pmh install-extension，然后在 pi 里 /re
 ${c.bold("命令")}
   add <名称> --base <url> [--key <k> | --key-env VAR] [--api <api>] [--api-rule 正则=api]
              [--model id1,id2 | --models-file f] [--cost-multiplier 0.2 | --no-cost]
-             [--key-in models] [--name 显示名] [--force] [--no-sync] [--dry-run] [--verbose]
+             [--key-in models] [--name 显示名] [--no-key] [--yes] [--force] [--no-sync]
+             [--dry-run] [--verbose]
+             不带参数即进入向导；别名 setup / init
+  quick [地址] [key] [--as 名称]    一键接入：缺的参数从剪贴板里认；别名 go
   sync <名称> [--keep-missing] [--api-rule ...] [--cost-multiplier 0.2] [--dry-run] [--verbose]
   key <名称> <api-key>          把密钥写进 auth.json
   ls [--models]                 列出所有自定义 provider 与默认模型
+  models [名称]                 只看模型清单（等价 ls --models）
   use [名称[#模型] | 关键词]     留空则打开选择器；支持模糊，如 pmh use sonnet
                                 [--thinking <级别>] [--allow-builtin]
+                               别名 switch
   scope [pattern...] [--clear]  限制 Ctrl+P 循环范围
   test <名称> [--model id] [--no-chat] [--verbose]
   run [名称[#模型] | 关键词] [-- <传给 pi 的参数>]

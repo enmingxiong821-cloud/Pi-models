@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
 import {
-  cmdAdd, cmdAlias, cmdDoctor, cmdInstallExtension, cmdKey, cmdLs, cmdPick, cmdRm, cmdRun, cmdScope, cmdSync, cmdTest, cmdUse,
-  makeContext, printHelp,
+  cmdAdd, cmdAlias, cmdDoctor, cmdInstallExtension, cmdKey, cmdLs, cmdPick, cmdQuick, cmdRm, cmdRun, cmdScope, cmdSync, cmdTest,
+  cmdUse, makeContext, printHelp,
 } from "../src/commands.mjs";
 import { fail } from "../src/util.mjs";
 
@@ -86,6 +86,17 @@ try {
       await cmdAdd(ctx, positional[0], flags);
       break;
     }
+    case "setup":
+    case "init": {
+      // 向导：等价于不带任何参数的 add
+      await cmdAdd(makeContext(flags), positional[0], flags);
+      break;
+    }
+    case "quick":
+    case "go": {
+      await cmdQuick(makeContext(flags), positional[0], positional[1], flags);
+      break;
+    }
     case "sync": {
       const ctx = makeContext(flags);
       await cmdSync(ctx, positional[0], flags);
@@ -101,7 +112,13 @@ try {
       cmdLs(makeContext(flags), flags);
       break;
     }
-    case "use": {
+    case "models": {
+      flags.models = true;
+      cmdLs(makeContext(flags), flags);
+      break;
+    }
+    case "use":
+    case "switch": {
       await cmdUse(makeContext(flags), positional[0], flags);
       break;
     }

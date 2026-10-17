@@ -106,3 +106,24 @@ export function isLocal(url) {
     return false;
   }
 }
+
+/**
+ * 从地址猜一个 provider 名称：tbyunyi-router.crow5.com -> crow5，
+ * api.openai.com -> openai，localhost -> localhost。
+ */
+export function suggestName(url) {
+  let host;
+  try {
+    host = new URL(String(url).includes("://") ? url : `https://${url}`).hostname;
+  } catch {
+    return "relay";
+  }
+  const tlds = new Set(["com", "cn", "net", "org", "io", "co", "ai", "dev", "app", "xyz", "top", "vip", "cc", "me", "info", "tech", "site", "online", "local", "internal", "lan"]);
+  const drop = new Set(["www", "api", "openai", "proxy", "router", "gateway", "gw"]);
+  const labels = host.split(".").filter(Boolean);
+  let parts = labels;
+  if (parts.length > 1 && tlds.has(parts.at(-1))) parts = parts.slice(0, -1);
+  while (parts.length > 1 && drop.has(parts[0])) parts = parts.slice(1);
+  const name = (parts.at(-1) ?? labels[0] ?? "relay").toLowerCase().replace(/[^a-z0-9-]/g, "-");
+  return name || "relay";
+}

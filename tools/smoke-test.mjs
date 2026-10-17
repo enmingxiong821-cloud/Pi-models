@@ -20,6 +20,10 @@ const MODELS = ["claude-sonnet-4-5", "gpt-5.5", "vendor/totally-unknown-model-9"
 const REAL = process.argv.includes("--real");
 
 process.env.PMH_NO_PROXY = "1";
+process.env.PMH_NONINTERACTIVE = "1"; // 禁掉交互式提问，避免在真终端里跑自测被卡住
+
+const { suggestName } = await import("../src/relay.mjs");
+const { parseEndpoint, maskKey } = await import("../src/clipboard.mjs");
 
 /** 假中转站：只实现 /v1/models 与 /v1/chat/completions，并校验 Bearer。 */
 function fakeHandler(url, init = {}) {
@@ -74,7 +78,7 @@ if (REAL) {
     fetchCalls += 1;
     return fakeHandler(String(url), init);
   };
-  const { cmdAdd, cmdInstallExtension, cmdKey, cmdLs, cmdRm, cmdScope, cmdSync, cmdTest, cmdUse, makeContext } = await import("../src/commands.mjs");
+  const { cmdAdd, cmdInstallExtension, cmdQuick, cmdKey, cmdLs, cmdRm, cmdScope, cmdSync, cmdTest, cmdUse, makeContext } = await import("../src/commands.mjs");
   const capture = async (fn) => {
     const lines = [];
     const original = console.log;
@@ -97,6 +101,15 @@ if (REAL) {
     key: (name, k) => capture(() => cmdKey(ctx(), name, k)),
     rm: (name, flags = {}) => capture(() => cmdRm(ctx(), name, flags)),
     installExtension: () => capture(() => cmdInstallExtension(ctx(), {})),
+    quick: (url, key, flags = {}) => capture(() => cmdQuick(ctx(), url, key, flags)),
+    addNoArgs: async () => {
+      try {
+        await capture(() => cmdAdd(ctx(), undefined, {}));
+        return "(没有报错)";
+      } catch (err) {
+        return err.message;
+      }
+    },
     fetchCalls: () => fetchCalls,
   };
 }
@@ -112,6 +125,14 @@ const cli = REAL
       key: (name, k) => run(["key", name, k]),
       rm: (name, flags) => run(["rm", name, ...flagArgs(flags ?? {})]),
       installExtension: () => run(["install-extension"]),
+      quick: (url, key, flags = {}) => run(["quick", url, key, ...flagArgs(flags)]),
+      addNoArgs: () => {
+        const r = spawnSync(process.execPath, [bin, "add", "--agent-dir", agentDir, "--catalog", FIXTURE_CATALOG], {
+          encoding: "utf8",
+          env: { ...process.env, PMH_NO_PROXY: "1", PMH_NONINTERACTIVE: "1" },
+        });
+        return `${r.stdout ?? ""}${r.stderr ?? ""}`;
+      },
     }
   : run;
 
@@ -182,6 +203,37 @@ try {
     const out = await cli.installExtension();
     assert.match(out, /扩展已安装/);
     assert.ok(fs.existsSync(path.join(agentDir, "extensions", "quick-switch.js")));
+  });
+
+  await step("按地址推断 provider 名称", () => {
+    assert.equal(suggestName("https://tbyunyi-router.crow5.com"), "crow5");
+    assert.equal(suggestName("https://api.openai.com/v1"), "openai");
+    assert.equal(suggestName("http://localhost:11434"), "localhost");
+    assert.equal(suggestName("https://ai.example.com"), "example");
+    assert.equal(suggestName("https://mock.relay.local"), "relay");
+  });
+
+  await step("从剪贴板文本里认出地址与 Key", () => {
+    assert.deepEqual(parseEndpoint("https://xxx.crow5.com  sk-abc1234567890"), { url: "https://xxx.crow5.com", key: "sk-abc1234567890" });
+    assert.equal(parseEndpoint("Base URL: https://api.foo.com/v1\nAPI Key: sk-xyz9876543210").url, "https://api.foo.com/v1");
+    assert.equal(parseEndpoint("https://api.foo.com/v1").key, "");
+    assert.equal(parseEndpoint("什么也没有").url, "");
+    assert.match(maskKey("sk-abcdefghijklmn"), /^sk-ab…/);
+  });
+
+  await step("一键配置：quick 从 URL+Key 到可用 provider 一气呵成", async () => {
+    const out = await cli.quick(base, KEY, { as: "quickdemo" });
+    assert.match(out, /读取到 3 个模型/);
+    const models = read("models.json");
+    assert.equal(models.providers.quickdemo.models.length, 3);
+    assert.equal(read("auth.json").quickdemo.key, KEY);
+  });
+
+  await step("非交互环境缺参数时给出明确指引，且不写坏配置", async () => {
+    const before = fs.readFileSync(path.join(agentDir, "models.json"), "utf8");
+    const out = await cli.addNoArgs();
+    assert.match(out, /缺少 --base/);
+    assert.equal(fs.readFileSync(path.join(agentDir, "models.json"), "utf8"), before);
   });
 
   await step("test 能连通并试聊成功", async () => {

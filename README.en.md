@@ -11,13 +11,29 @@ OpenRouter, Ollama, vLLM — and switch models instantly.
 ```bash
 git clone https://github.com/enmingxiong821-cloud/pi-model.git
 cd pi-model
-node bin/pmh.mjs add crow5 --base https://your-relay.example.com --key sk-xxxx
+node bin/pmh.mjs quick https://your-relay.example.com sk-xxxx
 ```
 
 Then, inside pi:
 
 ```text
 pi> /switch sonnet      # picker with relays first, or jump straight to a match
+```
+
+## One-click install
+
+- Windows: double-click `一键安装.cmd` (or `powershell -ExecutionPolicy Bypass -File install.ps1`)
+- macOS / Linux: `sh install.sh`
+
+It checks Node ≥ 20, puts `bin/` on your PATH (so you can just type `pmh`), and installs the
+`/switch` extension into pi when pi is present.
+
+## One-shot provider setup
+
+```bash
+pmh quick <url> <key>   # add + fetch the model list + pick a default model, in one go
+pmh quick               # same, but reads "url + key" from your clipboard
+pmh add                 # or answer a short wizard: url → key → model list → pick a model
 ```
 
 ## Why this exists
@@ -55,6 +71,7 @@ Run `/reload` (or restart pi), then:
 
 | Command | Purpose |
 |---|---|
+| `pmh quick [url] [key]` | One-shot setup: URL + key (or clipboard) → fetch models → pick a default |
 | `pmh add <name> --base <url> [--key <key>]` | Add/update a provider, discover models, fill metadata |
 | `pmh sync <name>` | Re-discover models; keeps fields you edited by hand |
 | `pmh key <name> <api-key>` | Store/rotate a key in `auth.json` |

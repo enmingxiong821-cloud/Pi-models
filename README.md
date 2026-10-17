@@ -16,12 +16,19 @@
 一条命令接入中转站，一个快捷键在 pi 里换模型：
 
 ```text
-pmh add crow5 --base https://你的中转站 --key sk-xxxx   # 接入
+pmh quick                          # 一键：地址 + Key（Key 可先复制到剪贴板）→ 自动读模型 → 挑默认模型
 ```
 
 ```text
 pi> /switch  sonnet        # 切模型，中转站排最前
 ```
+
+## 一键安装
+
+Windows：双击仓库里的 `一键安装.cmd`（或 `powershell -ExecutionPolicy Bypass -File install.ps1`）。
+macOS / Linux：`sh install.sh`。
+
+脚本做三件事：检查 Node ≥ 20 → 把 `bin/` 加进 PATH（以后直接敲 `pmh`）→ 如果检测到 pi，顺手把 `/switch` 扩展装好。
 
 ## 安装
 
@@ -50,20 +57,20 @@ pi 的 `/login` 只列内置模型厂商，所以第一次接中转站的人会�
 ## 30 秒上手
 
 ```powershell
-# 1) 接一个中转站（会自动拉 /v1/models 并补全元数据）
-node bin/pmh.mjs add crow5 --base https://你的中转站域名 --key sk-xxxx
+# 1) 接入（三种写法任选其一）
+pmh quick https://你的中转站域名 sk-xxxx   # 一键：地址+Key → 自动读模型列表 → 挑默认模型
+pmh quick                                  # 参数都省了也行：Key 先复制到剪贴板，它会自动认
+pmh add                                    # 或者跟着向导走，一个个问
 
-# 2) 验证：探测模型列表 + 真发一条最小请求试聊
-node bin/pmh.mjs test crow5
-
-# 3) 用起来：设为默认，或直接以这个站启动 pi
-node bin/pmh.mjs use crow5#claude-sonnet-4-5
-node bin/pmh.mjs run crow5#claude-sonnet-4-5
+# 2) 验证与切换（名称是接入时按域名推断的，比如 crow5）
+pmh test crow5
+pmh use sonnet          # 关键词模糊匹配，不用记全名
+pmh run sonnet          # 直接以这个模型启动 pi
 ```
 
 已经开着的 pi 里直接 `/model` 搜索、或 `Ctrl+P` 循环切换即可，**不用重启**。
 
-> 想省掉 `node bin/pmh.mjs` 前缀：把本目录加进 PATH，或直接用仓库自带的 `bin/pmh.cmd`。
+> 没跑安装脚本、也没有 `pmh` 命令时，把上面的 `pmh` 换成 `node bin/pmh.mjs` 即可。
 
 ## 在 pi 里秒切（推荐）
 
