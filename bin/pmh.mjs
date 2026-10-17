@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
 import {
-  cmdAdd, cmdAlias, cmdAuto, cmdCurrent, cmdDoctor, cmdFav, cmdFeedback, cmdGroup, cmdImport, cmdInstallExtension, cmdKey, cmdLocal,
+  cmdAdd, cmdAlias, cmdAuto, cmdBootstrap, cmdCurrent, cmdDoctor, cmdFav, cmdFeedback, cmdGroup, cmdImport, cmdInstallExtension, cmdKey, cmdLocal,
   cmdLs, cmdMeta, cmdModel, cmdPick, cmdQuick, cmdRecent, cmdRelay, cmdRm, cmdRun, cmdScope, cmdSync, cmdTest,
   cmdUse, makeContext, printHelp,
 } from "../src/commands.mjs";
@@ -190,6 +190,10 @@ try {
     }
     case "doctor": {
       await cmdDoctor(makeContext(flags));
+      break;
+    }
+    case "bootstrap": {
+      await cmdBootstrap(makeContext(flags), positional[0], positional[1], flags);
       break;
     }
     case "feedback": {

@@ -22,18 +22,43 @@ pi> /switch sonnet      # picker with relays first, or jump straight to a match
 
 ## One-click install
 
-- Windows: double-click `一键安装.cmd` (or `powershell -ExecutionPolicy Bypass -File install.ps1`)
-- macOS / Linux: `sh install.sh`
+The only prerequisite is **Node.js 20+** (the installer does not install Node or pi; you can
+configure pmh before pi is installed).
 
-It checks Node ≥ 20, puts `bin/` on your PATH (so you can just type `pmh`), and installs the
-`/switch` extension into pi when pi is present.
+Windows (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/enmingxiong821-cloud/pi-model/main/install.ps1 | iex
+```
+
+macOS / Linux / WSL / Termux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/enmingxiong821-cloud/pi-model/main/install.sh | sh
+```
+
+Or download the source archive and use a double-click entry point:
+
+| Platform | Entry point |
+|---|---|
+| Windows | `install.cmd` (or `一键安装.cmd`) |
+| macOS | `install.command` (run `chmod +x install.command install.sh` first if macOS refuses to open it) |
+| Linux | `sh install.sh` |
+
+The installer checks Node ≥ 20, downloads the latest GitHub release (falling back to `main`),
+installs to `%LOCALAPPDATA%\pmh` (Windows) or `~/.local/share/pmh` (macOS/Linux) with a backup of
+the previous version, adds `pmh` to PATH, installs the `/switch` extension when pi is present,
+and then **runs the setup wizard**: relay URL + key → fetch models → pick a default model.
+
+Reopen your terminal and `pmh` is ready; inside pi, type `/switch`. Skip the wizard with
+`-NoSetup` (Windows) / `--no-setup` (macOS/Linux) and run `pmh bootstrap` later.
 
 ## Platform support
 
 | Platform | Status | Notes |
 |---|---|---|
 | Windows 10/11 | ✅ primary | `pmh.cmd` / `install.ps1`; clipboard via PowerShell |
-| macOS | ✅ | `install.sh`; clipboard via built-in `pbpaste` |
+| macOS | ✅ | `install.sh` / `install.command`; clipboard via built-in `pbpaste` |
 | Linux desktop | ✅ | `install.sh`; clipboard via `wl-paste` (Wayland) or `xclip`/`xsel` (X11) |
 | WSL | ✅ | Same as Linux; point at a Windows-side pi with `--agent-dir /mnt/c/Users/<you>/.pi/agent` |
 | Termux (Android) | ✅ | `pkg install nodejs`; clipboard needs `termux-api` (`termux-clipboard-get`) |
@@ -242,6 +267,7 @@ Inside pi, `/feedback` gives you the same entry point.
 | `pmh test <name> [--model id] [--no-chat]` | Probe `/v1/models` and send one minimal request |
 | `pmh scope <pattern...>` / `--clear` | Restrict pi's `Ctrl+P` cycling range |
 | `pmh install-extension [--copy\|--link]` | Install the quick-switch and auto-router extensions; `--link` (recommended) registers a pi package that updates with the repo |
+| `pmh bootstrap [url] [--copy] [--no-extension] [--no-config]` | One-shot setup: install extensions + configure a relay + choose a default model (called by the installer) |
 | `pmh completion [powershell\|bash\|zsh\|fish]` | Print a shell completion script (auto-detects `$SHELL`/platform when omitted) |
 | `pmh alias` | Generate `pi-<provider>` shell shortcuts |
 | `pmh rm <name> [--purge-key [--purge-backups]]` | Remove a provider (and optionally all its keys/aliases; `--purge-backups` also removes old backups containing them); also drops its `defaultProvider` / `enabledModels` entries from `settings.json` and its toggle-back history |
@@ -326,6 +352,7 @@ node tools/native-test.mjs         # local presets, built-in provider parsing, m
 node tools/router-test.mjs         # auto routing: classifier, config I/O, virtual-model routing, retry escalation, CLI
 node tools/compat-test.mjs         # pi version/API probing, extension self-sync, package vs copy install modes
 node tools/feedback-test.mjs       # feedback: redaction, diagnostic counts, issue URL encoding/truncation, per-platform open
+node tools/bootstrap-test.mjs      # bootstrap: both extension modes, non-interactive fallback, fake relay config, installer syntax
 node tools/extension-test.mjs      # extension: filters, ranking, status line, widget
 node tools/platform-test.mjs       # Windows/macOS/Linux launcher, clipboard, shell quoting
 node tools/rpc-test.mjs            # drives a real pi over RPC and asserts /switch works

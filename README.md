@@ -25,17 +25,43 @@ pi> /switch  sonnet        # 切模型，中转站排最前
 
 ## 一键安装
 
-Windows：双击仓库里的 `一键安装.cmd`（或 `powershell -ExecutionPolicy Bypass -File install.ps1`）。
-macOS / Linux：`sh install.sh`。
+前置条件只有 **Node.js 20+**（脚本不会代装 Node，也不会代装 pi；pi 没装也能先把配置写好）。
 
-脚本做三件事：检查 Node ≥ 20 → 把 `bin/` 加进 PATH（以后直接敲 `pmh`）→ 如果检测到 pi，顺手把 `/switch` 扩展装好。
+Windows（PowerShell）：
+
+```powershell
+irm https://raw.githubusercontent.com/enmingxiong821-cloud/pi-model/main/install.ps1 | iex
+```
+
+macOS / Linux / WSL / Termux：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/enmingxiong821-cloud/pi-model/main/install.sh | sh
+```
+
+也可以下载源码压缩包后双击安装：
+
+| 平台 | 入口 |
+|---|---|
+| Windows | 解压后双击 `install.cmd`（或 `一键安装.cmd`） |
+| macOS | 解压后双击 `install.command`（若提示权限不足，先执行 `chmod +x install.command install.sh`） |
+| Linux | `sh install.sh` |
+
+安装脚本会：
+
+1. 检查 Node ≥ 20，从最新 GitHub Release 下载（失败自动回落 `main`）；
+2. 装到 `%LOCALAPPDATA%\pmh`（Windows）或 `~/.local/share/pmh`，旧版本自动备份；
+3. 把 `pmh` 加入 PATH；
+4. 检测到 pi 就装 `/switch` 扩展，并**直接进入配置向导**：填中转站地址 + Key → 自动读模型 → 选默认模型。
+
+装完重开终端即可用 `pmh`，pi 里输入 `/switch` 换模型。跳过向导用 `-NoSetup`（Windows）/ `--no-setup`（macOS/Linux），之后随时运行 `pmh bootstrap` 补上。
 
 ## 平台支持
 
 | 平台 | 状态 | 说明 |
 |---|---|---|
 | Windows 10/11 | ✅ 主力支持 | `pmh.cmd` / `install.ps1` / 剪贴板走 PowerShell |
-| macOS | ✅ 支持 | `install.sh`，剪贴板走自带 `pbpaste` |
+| macOS | ✅ 支持 | `install.sh` / `install.command`，剪贴板走自带 `pbpaste` |
 | Linux 桌面 | ✅ 支持 | `install.sh`，剪贴板走 `wl-paste`（Wayland）或 `xclip`/`xsel`（X11） |
 | WSL | ✅ 支持 | 等同 Linux；如果 pi 装在 Windows 侧，用 `--agent-dir /mnt/c/Users/<你>/.pi/agent` 指过去 |
 | Termux（Android） | ✅ 支持 | `pkg install nodejs`，剪贴板需 `termux-api`（`termux-clipboard-get`） |
@@ -248,6 +274,7 @@ pi 里也可以直接输入 `/feedback` 获取同样的入口。
 | `pmh run [名称[#模型] \| 关键词 \| @组 [关键词]] [-- <传给 pi 的参数>]` | 以指定模型启动 pi；留空先选 |
 | `pmh pick [--run] [--filter @组]` | `↑↓` 方向键选择器，输入即过滤（可顺手启动 pi） |
 | `pmh install-extension [--copy\|--link]` | 装 quick-switch 与 auto-router 扩展；`--link` 推荐（pi 包模式，随仓库更新） |
+| `pmh bootstrap [地址] [--copy] [--no-extension] [--no-config]` | 一键初始化：装扩展 + 配置中转站 + 选默认模型（安装脚本最后调用的就是它） |
 | `pmh completion [powershell\|bash\|zsh\|fish]` | 输出 shell 补全脚本；不带参数时按 `$SHELL`/平台自动识别 |
 | `pmh alias [--shell powershell\|bash]` | 生成 `pi-<provider>` 快捷命令 |
 | `pmh rm <名称> [--purge-key [--purge-backups]]` | 移除 provider（可选连密钥和所有 Key 别名一起删；`--purge-backups` 再清掉含该站凭据的旧备份）；顺手清掉 `settings.json` 里指向它的 `defaultProvider` / `enabledModels`，以及回退历史 |
@@ -358,6 +385,7 @@ node tools/native-test.mjs         # 本机服务预设、内置 provider 解析
 node tools/router-test.mjs          # 自动选模型：分类器、配置读写、虚拟模型路由、失败升档、CLI
 node tools/compat-test.mjs         # pi 版本/API 探测、扩展自同步、包模式与复制模式识别
 node tools/feedback-test.mjs       # 反馈：脱敏、诊断计数、Issue 链接编码与截断、三平台打开
+node tools/bootstrap-test.mjs      # 一键初始化：扩展两种装法、非交互降级、假中转站写配置、安装脚本文法
 node tools/extension-test.mjs      # 扩展逻辑单测（过滤语法、排序、状态栏、widget）
 node tools/platform-test.mjs       # Windows/macOS/Linux 启动器、剪贴板、shell 转义
 node tools/rpc-test.mjs            # 让真实 pi 以 RPC 模式加载扩展，验证 /switch 真的换了模型
@@ -390,6 +418,8 @@ extensions/auto-router/     pmh/auto 虚拟模型：index.js（pi 扩展）+ rou
                             + compat.mjs（pi 版本/API 探测与扩展自同步，CLI 共用）
 tools/*-test.mjs     各模块自测（见上）
 tools/ws.mjs         检索/抓页小工具
+install.ps1 / install.cmd / 一键安装.cmd   Windows 一键安装
+install.sh / install.command              macOS / Linux 一键安装
 docs/进度与调研.md     调研过程与结论存档
 ```
 

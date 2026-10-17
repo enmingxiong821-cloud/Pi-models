@@ -2265,6 +2265,56 @@ export function cmdInstallExtension(ctx, flags) {
   info(`想彻底告别复制、让扩展随仓库实时更新：${c.bold("pmh install-extension --link")}`);
 }
 
+/**
+ * 一键初始化：装扩展 → 配置中转站 → 设默认模型。
+ * 安装脚本最后调用这里；也可以手动运行 `pmh bootstrap`。
+ */
+export async function cmdBootstrap(ctx, urlArg, keyArg, flags = {}) {
+  heading("pmh 初始化");
+
+  const install = findPiInstall(ctx.agentDir);
+  if (!install.version && !flags.noExtension) {
+    warn("没有检测到 pi：配置仍会写入，但扩展要等 pi 装好后才生效。");
+    info("装好 pi 后运行：pmh bootstrap");
+  }
+
+  if (!flags.noExtension) {
+    const extFlags = flags.copy
+      ? { ...flags, copy: true, link: false, package: false }
+      : { ...flags, link: true, package: true, copy: false };
+    try {
+      cmdInstallExtension(ctx, extFlags);
+    } catch (err) {
+      warn(`扩展安装失败：${err.message}`);
+      info("可以先继续配置，之后重试：pmh install-extension --link");
+    }
+  }
+
+  if (flags.noConfig) {
+    info("已跳过中转站配置。之后运行 pmh bootstrap 或 pmh quick。");
+    return;
+  }
+
+  const url = urlArg ?? flags.base ?? flags.baseUrl ?? "";
+  const key = keyArg ?? flags.key ?? "";
+  if (!url && !isInteractive()) {
+    info("没有提供中转站地址，已跳过配置。之后运行 pmh bootstrap 或 pmh quick。");
+    return;
+  }
+
+  try {
+    await cmdQuick(ctx, url, key, flags);
+  } catch (err) {
+    // 安装本身已经成功，配置失败不应让安装脚本整体报错
+    warn(`配置未完成：${err.message}`);
+    info("之后可以重新运行：pmh bootstrap");
+    return;
+  }
+
+  ok("初始化完成。");
+  info("打开 pi，输入 /switch 选模型；pmh current 查看当前默认模型。");
+}
+
 export function cmdAlias(ctx, flags) {
   const models = loadModels(ctx);
   const ids = Object.keys(models.providers);
@@ -2519,6 +2569,8 @@ ${c.bold("命令")}
   rm <名称> [--purge-key [--purge-backups]]
   feedback [问题描述] [--print] [--open] [--json]
                                 生成脱敏环境报告并打开 GitHub Issue（不含 Key / 站点地址）
+  bootstrap [地址] [--copy] [--no-extension] [--no-config]
+                                一键初始化：装扩展 + 配置中转站 + 选默认模型
   doctor
 
 ${c.bold("全局参数")}
