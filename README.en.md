@@ -155,3 +155,8 @@ node tools/rpc-test.mjs --discover # verifies auto-discovery in a real ~/.pi/age
 
 [MIT](LICENSE). Check your relay provider's terms before using it; this project only provides
 configuration and switching glue.
+
+## Docs
+
+Design and research notes (Chinese) live in [`docs/`](docs/) — start from
+[`docs/README.md`](docs/README.md); the main piece is [`docs/蓝图.md`](docs/蓝图.md) (design blueprint).
