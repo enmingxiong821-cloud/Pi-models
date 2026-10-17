@@ -118,7 +118,7 @@ export function suggestName(url) {
   } catch {
     return "relay";
   }
-  const tlds = new Set(["com", "cn", "net", "org", "io", "co", "ai", "dev", "app", "xyz", "top", "vip", "cc", "me", "info", "tech", "site", "online", "local", "internal", "lan"]);
+  const tlds = new Set(["com", "cn", "net", "org", "io", "co", "ai", "dev", "app", "xyz", "top", "vip", "cc", "me", "info", "tech", "site", "online", "local", "internal", "lan", "invalid", "test", "example"]);
   const drop = new Set(["www", "api", "openai", "proxy", "router", "gateway", "gw"]);
   const labels = host.split(".").filter(Boolean);
   let parts = labels;

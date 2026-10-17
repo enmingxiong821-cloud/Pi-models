@@ -211,6 +211,7 @@ try {
     assert.equal(suggestName("http://localhost:11434"), "localhost");
     assert.equal(suggestName("https://ai.example.com"), "example");
     assert.equal(suggestName("https://mock.relay.local"), "relay");
+    assert.equal(suggestName("https://gw.example.invalid"), "example");
   });
 
   await step("从剪贴板文本里认出地址与 Key", () => {
