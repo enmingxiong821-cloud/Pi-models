@@ -1,0 +1,111 @@
+name: Bug 报告
+description: 报告可复现的问题（请勿粘贴 API Key 或未脱敏日志）
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。提交前请先升级到最新 Release，并搜索已有 Issue。
+
+        **不要**粘贴 API Key、`auth.json`、站点地址或未脱敏的日志。
+        可以先运行 `pmh feedback --print`，只粘贴其中已经脱敏的“环境信息”部分。
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述
+      description: 发生了什么？涉及哪个命令或 pi 扩展？
+      placeholder: 例如：pmh add 在 Windows 上读取模型列表后，模型数为 0
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 尽量给出最小可复现步骤，不要包含真实 Key。
+      placeholder: |
+        1. 运行 `pmh ...`
+        2. 输入 ...
+        3. 看到 ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望结果
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际结果与报错
+      description: 粘贴报错原文前，先删掉 Key、站点地址和用户名。
+      render: text
+    validations:
+      required: false
+
+  - type: input
+    id: pmh-version
+    attributes:
+      label: pmh 版本
+      description: 运行 `pmh feedback --print`，查看 `pmh:` 那一行。
+      placeholder: "0.4.1"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: 操作系统
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - 其他
+    validations:
+      required: true
+
+  - type: input
+    id: node
+    attributes:
+      label: Node.js 版本
+      description: 运行 `node -v`。
+      placeholder: v24.18.0
+    validations:
+      required: true
+
+  - type: input
+    id: pi-version
+    attributes:
+      label: pi 版本（可选）
+      placeholder: 不记得可以留空
+
+  - type: dropdown
+    id: provider
+    attributes:
+      label: 接入方式（可选，不要填写地址）
+      multiple: true
+      options:
+        - 中转站 / OpenAI 兼容
+        - Anthropic 兼容
+        - 本机服务（Ollama / LM Studio / vLLM / SGLang）
+        - 官方 provider
+        - 与具体站点无关
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 已升级到最新 Release
+          required: true
+        - label: 已搜索已有 Issue
+          required: true
+        - label: 已删除日志中的 API Key、站点地址和用户名
+          required: true

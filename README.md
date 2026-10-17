@@ -9,6 +9,8 @@
 ![零依赖](https://img.shields.io/badge/dependencies-0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![pi-package](https://img.shields.io/badge/pi-package-5B5BD6)
+[![CI](https://github.com/enmingxiong821-cloud/pi-model/actions/workflows/ci.yml/badge.svg)](https://github.com/enmingxiong821-cloud/pi-model/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/enmingxiong821-cloud/pi-model?display_name=tag)](https://github.com/enmingxiong821-cloud/pi-model/releases/latest)
 
 让 [pi](https://pi.dev) 接上任意第三方 API（中转站 / 自建网关 / OpenRouter / Ollama 之类），
 并且随时一键切换模型。

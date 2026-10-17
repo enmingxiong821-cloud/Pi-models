@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全漏洞（私密报告）
+    url: https://github.com/enmingxiong821-cloud/pi-model/security/advisories/new
+    about: 不要用公开 Issue 报告安全问题，也不要粘贴 API Key 或未脱敏日志
+  - name: 安装与常见问题
+    url: https://github.com/enmingxiong821-cloud/pi-model#常见问题
+    about: 接入、切换模型或安装失败时，先看这里

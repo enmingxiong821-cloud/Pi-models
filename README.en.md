@@ -8,6 +8,12 @@
 Connect [pi](https://pi.dev) to any third-party API — relay stations, self-hosted gateways,
 OpenRouter, Ollama, vLLM — and switch models instantly.
 
+![Node](https://img.shields.io/badge/node-%3E%3D20-43853d?logo=node.js&logoColor=white)
+![Zero dependencies](https://img.shields.io/badge/dependencies-0-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+[![CI](https://github.com/enmingxiong821-cloud/pi-model/actions/workflows/ci.yml/badge.svg)](https://github.com/enmingxiong821-cloud/pi-model/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/enmingxiong821-cloud/pi-model?display_name=tag)](https://github.com/enmingxiong821-cloud/pi-model/releases/latest)
+
 ```bash
 git clone https://github.com/enmingxiong821-cloud/pi-model.git
 cd pi-model

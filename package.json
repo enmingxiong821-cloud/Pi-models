@@ -17,6 +17,7 @@
     "cli"
   ],
   "license": "MIT",
+  "author": "enmingxiong821-cloud",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/enmingxiong821-cloud/pi-model.git"
