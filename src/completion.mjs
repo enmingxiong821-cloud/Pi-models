@@ -6,7 +6,7 @@ import { LOCAL_PRESETS } from "./native.mjs";
 const COMMANDS = [
   "add", "quick", "local", "model", "auto", "import", "scan", "sync", "key", "ls", "models", "current",
   "group", "relay", "fav", "recent", "meta", "use", "switch", "scope", "test",
-  "run", "pick", "install-extension", "alias", "rm", "doctor", "completion", "help",
+  "run", "pick", "install-extension", "alias", "rm", "doctor", "completion", "help", "feedback",
 ];
 
 const FLAGS = [
@@ -19,6 +19,7 @@ const FLAGS = [
   "--purge-backups", "--format", "--ctx", "--max-output", "--cost-in", "--cost-out",
   "--cache-read", "--cache-write", "--override", "--override-only", "--port", "--image",
   "--text-only", "--reasoning", "--no-reasoning", "--local", "--copy", "--link", "--package",
+  "--print", "--open",
 ];
 
 const LOCAL_NAMES = Object.values(LOCAL_PRESETS).map((preset) => preset.id);

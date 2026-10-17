@@ -16,6 +16,7 @@
  *   /switch-save               选一个并同时设为新会话默认
  *   /switch-fav                收藏/取消收藏当前模型
  *   /switch-widget [on|off]    开关站点 widget（默认 auto：≥2 个站才显示）
+ *   /feedback [描述]           提示在终端运行 pmh feedback（自动脱敏并预填 GitHub Issue）
  *   Ctrl+Shift+M               快捷键，等同 /switch
  *
  * 过滤语法：@组 / @fav / fav: / recent / reasoning（思考）/ image（图片）/
@@ -589,6 +590,21 @@ export default function (pi) {
       ].filter((o) => o.value.includes(q));
     },
     handler: async (args, ctx) => setWidget(args, ctx),
+  });
+
+  pi.registerCommand("feedback", {
+    description: "反馈问题：在终端运行 pmh feedback 生成脱敏报告并打开 GitHub Issue",
+    handler: async (args, ctx) => {
+      // 只展示命令，不执行；去掉 shell 敏感字符，避免用户复制粘贴时触发展开
+      const text = String(args ?? "").replace(/[!"`$\\]/g, "").replace(/\s+/g, " ").trim().slice(0, 200);
+      const command = text ? `pmh feedback "${text}"` : "pmh feedback";
+      ctx.ui?.notify?.(
+        `在终端运行：${command}\n`
+          + "会生成脱敏报告并打开预填好的 GitHub Issue（不含 Key / 站点地址）。\n"
+          + "或直接访问：https://github.com/enmingxiong821-cloud/pi-model/issues/new",
+        "info",
+      );
+    },
   });
 
   pi.registerShortcut("ctrl+shift+m", {

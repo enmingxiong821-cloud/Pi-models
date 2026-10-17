@@ -347,6 +347,17 @@ await step("/switch-widget on/off/auto 控制站点 widget", async () => {
   assert.match(h.notices.at(-1), /用法/);
 });
 
+await step("/feedback 只提示命令，且清掉 shell 敏感字符", async () => {
+  const h = makeHarness();
+  assert.ok(h.commands.has("feedback"));
+  await h.commands.get("feedback").handler("`rm -rf` $HOME \"x\"\n第二行", h.ctx);
+  const msg = h.notices.at(-1);
+  assert.match(msg, /pmh feedback "rm -rf HOME x 第二行"/);
+  assert.equal(msg.includes("`"), false);
+  assert.equal(msg.includes("$HOME"), false);
+  assert.match(msg, /issues\/new/);
+});
+
 fs.rmSync(agentDir, { recursive: true, force: true });
 console.error("\n扩展测试全部通过 ✅");
 

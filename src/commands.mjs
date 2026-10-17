@@ -7,6 +7,7 @@ import { AUTO_MODEL, AUTO_PROVIDER, TIERS, TIER_LABELS, autoConfigPath, classify
 import { checkCompat, installedMode, packageEntry, readSourceMarker, repoAvailable, staleCopies, syncCopiedExtensions, writeSourceMarker } from "../extensions/auto-router/compat.mjs";
 import { loadCatalog, buildModelEntry } from "./catalog.mjs";
 import { detectClipboardTool, maskKey, parseEndpoint, readClipboard } from "./clipboard.mjs";
+import { buildFeedback, openUrl } from "./feedback.mjs";
 import { collectFromCcswitch, collectFromClaude, collectFromCodex, dedupeItems, fetchText, isUrl, parseImportText } from "./import.mjs";
 import { addKeyAlias, activateAlias, keyAliasesOf, keyOf, keyStatus, removeKeyAlias } from "./keyring.mjs";
 import { searchModels } from "./match.mjs";
@@ -2298,6 +2299,47 @@ export async function cmdPick(ctx, flags) {
   if (flags.run) await cmdRun(ctx, target, [], {});
 }
 
+export async function cmdFeedback(ctx, message, flags = {}) {
+  const text = Array.isArray(message) ? message.join(" ") : String(message ?? "");
+  const data = buildFeedback(ctx, text);
+
+  if (flags.json) {
+    log(JSON.stringify({
+      title: data.title,
+      report: data.report,
+      issueUrl: data.issueUrl,
+      diagnostics: data.diagnostics,
+    }, null, 2));
+    return;
+  }
+
+  heading("反馈报告（已脱敏）");
+  log(data.report);
+  log("");
+  if (flags.print) {
+    log(data.issueUrl);
+    info("把上面的链接粘贴到浏览器；也可用 pmh feedback --open 直接打开。");
+    return;
+  }
+
+  let shouldOpen = Boolean(flags.open);
+  if (!shouldOpen && isInteractive()) {
+    shouldOpen = await askConfirm("在浏览器打开 GitHub Issue？", { defaultValue: false });
+  }
+  if (!shouldOpen) {
+    log(data.issueUrl);
+    info("在浏览器打开上面的链接，确认内容后提交即可。");
+    return;
+  }
+
+  if (openUrl(data.issueUrl)) {
+    ok("已在浏览器打开 GitHub Issue，确认内容后点击 Submit 即可。");
+  } else {
+    warn("没能自动打开浏览器，请手动访问下面链接：");
+    log(data.issueUrl);
+  }
+}
+
 export async function cmdDoctor(ctx) {
   const install = findPiInstall(ctx.agentDir);
   const launcher = findPiLauncher(ctx.agentDir);
@@ -2475,6 +2517,8 @@ ${c.bold("命令")}
   completion [powershell|bash|zsh|fish]   输出 shell 补全脚本（不带参数则自动识别）
   alias [--shell powershell|bash]
   rm <名称> [--purge-key [--purge-backups]]
+  feedback [问题描述] [--print] [--open] [--json]
+                                生成脱敏环境报告并打开 GitHub Issue（不含 Key / 站点地址）
   doctor
 
 ${c.bold("全局参数")}

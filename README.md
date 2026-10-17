@@ -201,6 +201,20 @@ pmh completion fish > ~/.config/fish/completions/pmh.fish
 
 重新打开终端，之后 `pmh use <Tab>` 就能直接列站点和模型。补全只读本地配置，不会发起任何网络请求。
 
+## 反馈问题
+
+遇到问题时运行：
+
+```bash
+pmh feedback "切换模型后 pi 报 401"
+```
+
+会打印一份脱敏后的报告（pmh/Node/pi 版本、安装方式、配置规模、自动路由状态），并给出预填好的 GitHub Issue 链接。
+交互终端会先问你是否打开浏览器；`--open` 直接打开，`--print` 只打印链接，`--json` 输出结构化结果。
+
+报告只有版本与数量：**不含 API Key、站点地址、模型名和用户名**，也不会自动提交——最终内容由你在浏览器里确认。
+pi 里也可以直接输入 `/feedback` 获取同样的入口。
+
 ## 命令
 
 | 命令 | 作用 |
@@ -238,6 +252,7 @@ pmh completion fish > ~/.config/fish/completions/pmh.fish
 | `pmh alias [--shell powershell\|bash]` | 生成 `pi-<provider>` 快捷命令 |
 | `pmh rm <名称> [--purge-key [--purge-backups]]` | 移除 provider（可选连密钥和所有 Key 别名一起删；`--purge-backups` 再清掉含该站凭据的旧备份）；顺手清掉 `settings.json` 里指向它的 `defaultProvider` / `enabledModels`，以及回退历史 |
 | `pmh doctor` | 环境体检：pi 版本、配置路径、内置 provider 数、`models.json` 结构/模型字段/凭据/默认模型校验、注册表是否陈旧 |
+| `pmh feedback [问题描述] [--print\|--open] [--json]` | 生成脱敏环境报告并打开预填的 GitHub Issue（不含 Key / 站点地址 / 模型名，不会自动提交） |
 
 常用参数：
 
@@ -342,6 +357,7 @@ node tools/cli-v02-test.mjs        # v0.2 命令面端到端（use -、@组 关�
 node tools/native-test.mjs         # 本机服务预设、内置 provider 解析、models.json 校验、model add/override/rm
 node tools/router-test.mjs          # 自动选模型：分类器、配置读写、虚拟模型路由、失败升档、CLI
 node tools/compat-test.mjs         # pi 版本/API 探测、扩展自同步、包模式与复制模式识别
+node tools/feedback-test.mjs       # 反馈：脱敏、诊断计数、Issue 链接编码与截断、三平台打开
 node tools/extension-test.mjs      # 扩展逻辑单测（过滤语法、排序、状态栏、widget）
 node tools/platform-test.mjs       # Windows/macOS/Linux 启动器、剪贴板、shell 转义
 node tools/rpc-test.mjs            # 让真实 pi 以 RPC 模式加载扩展，验证 /switch 真的换了模型
@@ -365,6 +381,7 @@ src/registry.mjs     多站注册表：分组、标签、收藏、MRU、元数�
 src/keyring.mjs      多 Key 别名（活动 Key 写 auth.json，其余写 <relay>@<alias>）
 src/import.mjs       批量接入：文本/JSON/YAML/env/curl/订阅解析、去重、扫描已有配置
 src/completion.mjs   shell 补全：候选生成与 PowerShell/bash/zsh/fish 脚本
+src/feedback.mjs     反馈：脱敏、环境摘要、GitHub Issue 预填链接
 src/match.mjs        模型关键词打分（"sonnet"、"crow5 gemini" 这类写法）
 src/picker.mjs       ↑↓ 方向键选择器（非 TTY 自动退化成输序号）
 src/commands.mjs     各子命令实现

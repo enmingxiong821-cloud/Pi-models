@@ -192,6 +192,23 @@ pmh completion fish > ~/.config/fish/completions/pmh.fish
 Reopen the shell and `pmh use <Tab>` lists relays and models. Completion reads local
 config only — no network requests.
 
+## Feedback
+
+When something breaks:
+
+```bash
+pmh feedback "pi returns 401 after switching models"
+```
+
+It prints a redacted report (pmh/Node/pi versions, install mode, config scale, auto-router
+state) and a prefilled GitHub issue link. On an interactive terminal it asks before opening
+the browser; use `--open` to open directly, `--print` to only print the link, or `--json`
+for structured output.
+
+The report contains versions and counts only: **no API keys, relay URLs, model names or
+usernames**, and nothing is submitted automatically — you review and submit in the browser.
+Inside pi, `/feedback` gives you the same entry point.
+
 ## CLI
 
 | Command | Purpose |
@@ -229,6 +246,7 @@ config only — no network requests.
 | `pmh alias` | Generate `pi-<provider>` shell shortcuts |
 | `pmh rm <name> [--purge-key [--purge-backups]]` | Remove a provider (and optionally all its keys/aliases; `--purge-backups` also removes old backups containing them); also drops its `defaultProvider` / `enabledModels` entries from `settings.json` and its toggle-back history |
 | `pmh doctor` | Environment check: pi version, config paths, built-in provider count, `models.json` structure/model/credential/default checks, registry health |
+| `pmh feedback [description] [--print\|--open] [--json]` | Build a redacted environment report and open a prefilled GitHub issue (no keys, relay URLs or model names; never submits automatically) |
 
 Useful flags:
 
@@ -307,6 +325,7 @@ node tools/cli-v02-test.mjs        # v0.2 CLI end-to-end (use -, @group keyword,
 node tools/native-test.mjs         # local presets, built-in provider parsing, models.json validation, model add/override/rm
 node tools/router-test.mjs         # auto routing: classifier, config I/O, virtual-model routing, retry escalation, CLI
 node tools/compat-test.mjs         # pi version/API probing, extension self-sync, package vs copy install modes
+node tools/feedback-test.mjs       # feedback: redaction, diagnostic counts, issue URL encoding/truncation, per-platform open
 node tools/extension-test.mjs      # extension: filters, ranking, status line, widget
 node tools/platform-test.mjs       # Windows/macOS/Linux launcher, clipboard, shell quoting
 node tools/rpc-test.mjs            # drives a real pi over RPC and asserts /switch works
