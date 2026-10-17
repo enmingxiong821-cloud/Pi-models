@@ -1,6 +1,6 @@
 {
   "name": "pmh-cli",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "把任意第三方 API（中转站 / 自建网关）接进 pi，并在 pi 里一键切换模型",
   "type": "module",
   "bin": {
