@@ -7,7 +7,7 @@ import { loadCatalog, buildModelEntry } from "./catalog.mjs";
 import { detectClipboardTool, maskKey, parseEndpoint, readClipboard } from "./clipboard.mjs";
 import { searchModels } from "./match.mjs";
 import { pickOne } from "./picker.mjs";
-import { configPaths, findPiInstall, findPiLauncher, launcherNeedsShell, resolveAgentDir } from "./paths.mjs";
+import { configPaths, findPiInstall, findPiLauncher, launcherCommand, launcherNeedsShell, resolveAgentDir } from "./paths.mjs";
 import { askConfirm, askSecret, askText, isInteractive, noteNonInteractive } from "./prompt.mjs";
 import { API_KINDS, apiFamily, baseUrlFor, fetchModels, probeChat, fetchRatioConfig, suggestName } from "./relay.mjs";
 import { c, fail, heading, info, log, ok, readJson, rootOf, table, truncate, warn, writeJson } from "./util.mjs";
@@ -587,7 +587,7 @@ export function cmdRun(ctx, target, piArgs, flags) {
   const args = [...(provider ? ["--provider", provider] : []), ...(model ? ["--model", model] : []), ...piArgs];
   info(`启动 pi：${args.join(" ")}`);
   if (launcher.fromPath) info(`没在常见位置找到 pi，交给 PATH 里的 "pi" 启动`);
-  const res = spawnSync(launcher.command, args, { stdio: "inherit", shell: launcherNeedsShell(launcher) });
+  const res = spawnSync(launcherCommand(launcher), args, { stdio: "inherit", shell: launcherNeedsShell(launcher) });
   process.exit(res.status ?? 0);
 }
 

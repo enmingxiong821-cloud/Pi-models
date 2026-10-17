@@ -6,7 +6,7 @@ import path from "node:path";
 
 const { CLIPBOARD_CANDIDATES, clipboardCandidates, readClipboard, detectClipboardTool, parseEndpoint, maskKey } =
   await import("../src/clipboard.mjs");
-const { findPiLauncher, launcherNeedsShell } = await import("../src/paths.mjs");
+const { findPiLauncher, launcherNeedsShell, launcherCommand } = await import("../src/paths.mjs");
 const { suggestName } = await import("../src/relay.mjs");
 
 let passed = 0;
@@ -114,6 +114,14 @@ step("都没有时回退到 PATH，并按平台决定是否需要 shell", () => 
   assert.equal(launcher.command, "pi");
   assert.equal(launcher.fromPath, true);
   assert.equal(launcherNeedsShell(launcher), process.platform === "win32");
+});
+
+step("用户名带空格时，Windows 启动器路径会被正确加引号", () => {
+  const spaced = { command: "C:\\Users\\John Doe\\.pi\\agent\\bin\\pi.cmd", kind: "cmd" };
+  assert.equal(launcherCommand(spaced), '"C:\\Users\\John Doe\\.pi\\agent\\bin\\pi.cmd"');
+  const plain = { command: "/home/me/.pi/agent/bin/pi", kind: "bin" };
+  assert.equal(launcherCommand(plain), "/home/me/.pi/agent/bin/pi");
+  assert.equal(launcherCommand({ command: "pi", kind: "cmd", fromPath: true }), "pi");
 });
 
 console.error(`\n跨平台自测通过 ${passed} 项 ✅（当前系统：${process.platform} ${process.arch}）`);

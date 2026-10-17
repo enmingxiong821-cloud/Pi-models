@@ -85,3 +85,13 @@ export function findPiLauncher(agentDir, { exists = (p) => fs.existsSync(p), hom
 export function launcherNeedsShell(launcher) {
   return launcher?.kind === "cmd";
 }
+
+/**
+ * 交给 shell 启动时，路径里有空格必须加引号，
+ * 否则 C:\Users\John Doe\.pi\... 会被 cmd 从空格处截断。
+ */
+export function launcherCommand(launcher) {
+  if (!launcher) return "";
+  if (launcherNeedsShell(launcher) && /\s/.test(launcher.command)) return `"${launcher.command}"`;
+  return launcher.command;
+}
