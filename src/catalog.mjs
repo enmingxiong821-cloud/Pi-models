@@ -1,6 +1,7 @@
 import path from "node:path";
 import { catalogDirs } from "./paths.mjs";
 import { listDir, readJson } from "./util.mjs";
+import { mergeMeta, thinkingCompat } from "./metadata.mjs";
 
 /**
  * pi 自带一份完整模型目录（@earendil-works/pi-ai/dist/providers/data/*.json）。
@@ -165,32 +166,65 @@ export function titleize(modelId) {
     .trim();
 }
 
-/** 生成写入 models.json 的模型条目。 */
-export function buildModelEntry(modelId, { catalog, providerApi, providerBaseUrl, modelApi, modelBaseUrl, costMode, costMultiplier }) {
+/**
+ * 生成写入 models.json 的模型条目。
+ * 元数据优先级：中转站 /models > pi 官方目录 > 启发式（见 metadata.mergeMeta）。
+ */
+export function buildModelEntry(modelId, {
+  catalog, providerApi, providerBaseUrl, modelApi, modelBaseUrl,
+  costMode, costMultiplier, upstream, ratioCost, supportsReasoningEffort, noReasoningCompat,
+  includePromptCache = false,
+}) {
   const match = catalog ? matchModel(catalog, modelId) : null;
-  const meta = match?.meta;
   const guess = heuristicMeta(modelId);
-  const entry = {
-    id: modelId,
-    name: meta?.name ?? titleize(modelId),
-    reasoning: meta?.reasoning ?? guess.reasoning,
-    input: meta?.input ?? guess.input,
-    contextWindow: meta?.contextWindow ?? guess.contextWindow,
-    maxTokens: meta?.maxTokens ?? guess.maxTokens,
-  };
+  const merged = mergeMeta({
+    modelId,
+    upstream,
+    catalogMeta: match?.meta,
+    heuristic: guess,
+    costMode,
+    costMultiplier,
+    includePromptCache,
+  });
+  const entry = { ...merged.meta, id: modelId };
 
-  if (costMode !== "off" && meta?.cost) {
-    const k = costMode === "scaled" ? costMultiplier : 1;
+  // 倍率价来自中转站自己的配置，优先级最高（仅在 --ratio 时传入）
+  if (ratioCost && costMode !== "off") {
     entry.cost = {
-      input: +(meta.cost.input * k).toFixed(6),
-      output: +(meta.cost.output * k).toFixed(6),
-      cacheRead: +(meta.cost.cacheRead * k).toFixed(6),
-      cacheWrite: +(meta.cost.cacheWrite * k).toFixed(6),
+      input: ratioCost.input,
+      output: ratioCost.output,
+      cacheRead: ratioCost.cacheRead ?? 0,
+      cacheWrite: ratioCost.cacheWrite ?? 0,
     };
+    merged.sources.cost = "ratio";
   }
+
+  const effectiveApi = modelApi ?? providerApi;
+  const compat = noReasoningCompat
+    ? null
+    : thinkingCompat(modelId, effectiveApi, {
+        reasoning: merged.meta.reasoning,
+        supportsReasoningEffort,
+      });
+  if (compat) {
+    entry.compat = { ...(entry.compat ?? {}), ...compat.compat };
+    entry.thinkingLevelMap = compat.thinkingLevelMap;
+  }
+
   if (modelApi && modelApi !== providerApi) entry.api = modelApi;
   const needsBase = modelApi && modelApi !== providerApi;
   if (needsBase && modelBaseUrl && modelBaseUrl !== providerBaseUrl) entry.baseUrl = modelBaseUrl;
 
-  return { entry, match: match ? { matchedId: match.matchedId, method: match.method } : null, source: meta ? "pi 官方目录" : "启发式推断" };
+  const sourceLabel =
+    merged.sources.cost === "ratio"
+      ? "中转站倍率"
+      : { upstream: "中转站 /models", catalog: "pi 官方目录", heuristic: "启发式推断" }[merged.primarySource];
+
+  return {
+    entry,
+    match: match ? { matchedId: match.matchedId, method: match.method } : null,
+    source: sourceLabel,
+    sources: merged.sources,
+    upstreamSource: upstream?.source ?? null,
+  };
 }

@@ -1,59 +1,26 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
 import {
-  cmdAdd, cmdAlias, cmdDoctor, cmdInstallExtension, cmdKey, cmdLs, cmdPick, cmdQuick, cmdRm, cmdRun, cmdScope, cmdSync, cmdTest,
+  cmdAdd, cmdAlias, cmdAuto, cmdCurrent, cmdDoctor, cmdFav, cmdGroup, cmdImport, cmdInstallExtension, cmdKey, cmdLocal,
+  cmdLs, cmdMeta, cmdModel, cmdPick, cmdQuick, cmdRecent, cmdRelay, cmdRm, cmdRun, cmdScope, cmdSync, cmdTest,
   cmdUse, makeContext, printHelp,
 } from "../src/commands.mjs";
-import { fail } from "../src/util.mjs";
+import { completionCandidates, completionScript, detectShell } from "../src/completion.mjs";
+import { configPaths, resolveAgentDir } from "../src/paths.mjs";
+import { fail, log, setJsonMode } from "../src/util.mjs";
+import { parseArgs } from "../src/args.mjs";
 
-/** 宽松参数解析：--k v / --k=v / --no-k / 重复出现自动变数组 / `--` 之后原样透传。 */
-function parse(argv) {
-  const flags = {};
-  const positional = [];
-  let rest = [];
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === "--") {
-      rest = argv.slice(i + 1);
-      break;
-    }
-    if (arg.startsWith("--")) {
-      let key = arg.slice(2);
-      let value;
-      const eq = key.indexOf("=");
-      if (eq >= 0) {
-        value = key.slice(eq + 1);
-        key = key.slice(0, eq);
-      }
-      const camel = key.replace(/-([a-z])/g, (_, ch) => ch.toUpperCase());
-      if (key.startsWith("no-")) {
-        flags[key.slice(3).replace(/-([a-z])/g, (_, ch) => ch.toUpperCase())] = false;
-        continue;
-      }
-      if (value === undefined) {
-        const next = argv[i + 1];
-        if (next !== undefined && !next.startsWith("--")) {
-          value = next;
-          i += 1;
-        } else {
-          value = true;
-        }
-      }
-      if (camel in flags) flags[camel] = [].concat(flags[camel], value);
-      else flags[camel] = value;
-    } else if (arg.startsWith("-") && arg.length > 1 && positional.length === 0) {
-      flags[arg.slice(1)] = true;
-    } else {
-      positional.push(arg);
-    }
-  }
-  return { flags, positional, rest };
-}
-
-const { flags, positional, rest } = parse(process.argv.slice(2));
+const { flags, positional, rest } = parseArgs(process.argv.slice(2));
+setJsonMode(flags.json);
 const command = positional.shift() ?? (flags.help || flags.h ? "help" : "help");
 
-const NETWORK_COMMANDS = new Set(["add", "sync", "test"]);
+/** 只读配置路径的轻量上下文：不加载官方模型目录，适合补全/状态这类高频命令。 */
+const lightContext = () => {
+  const agentDir = resolveAgentDir(flags.agentDir);
+  return { agentDir, paths: configPaths(agentDir), flags };
+};
+
+const NETWORK_COMMANDS = new Set(["add", "setup", "init", "quick", "go", "local", "sync", "test", "import", "scan", "meta"]);
 
 /**
  * Node 24 的 fetch 默认不读系统代理，需要 NODE_USE_ENV_PROXY=1，而该变量要在进程启动前生效，
@@ -97,14 +64,54 @@ try {
       await cmdQuick(makeContext(flags), positional[0], positional[1], flags);
       break;
     }
+    case "local": {
+      await cmdLocal(makeContext(flags), positional[0], flags);
+      break;
+    }
+    case "model": {
+      cmdModel(makeContext(flags), positional, flags);
+      break;
+    }
+    case "auto": {
+      cmdAuto(makeContext(flags), positional, flags);
+      break;
+    }
+    case "import": {
+      await cmdImport(makeContext(flags), positional, flags);
+      break;
+    }
+    case "scan": {
+      await cmdImport(makeContext(flags), positional, { ...flags, scan: true });
+      break;
+    }
+    case "group": {
+      cmdGroup(makeContext(flags), positional, flags);
+      break;
+    }
+    case "relay": {
+      cmdRelay(makeContext(flags), positional);
+      break;
+    }
+    case "fav":
+    case "favorite": {
+      cmdFav(makeContext(flags), positional, flags);
+      break;
+    }
+    case "recent": {
+      cmdRecent(makeContext(flags), flags);
+      break;
+    }
+    case "meta": {
+      await cmdMeta(makeContext(flags), positional[0], flags);
+      break;
+    }
     case "sync": {
       const ctx = makeContext(flags);
       await cmdSync(ctx, positional[0], flags);
       break;
     }
     case "key": {
-      const ctx = makeContext(flags);
-      cmdKey(ctx, positional[0], positional[1]);
+      cmdKey(makeContext(flags), positional, flags);
       break;
     }
     case "ls":
@@ -117,9 +124,35 @@ try {
       cmdLs(makeContext(flags), flags);
       break;
     }
+    case "current":
+    case "status": {
+      cmdCurrent(lightContext(), flags);
+      break;
+    }
+    case "completion": {
+      log(completionScript(positional[0] ?? detectShell()));
+      break;
+    }
+    case "__complete": {
+      try {
+        // 补全词可能以 "-" 开头（如 "--js"），shell 脚本用 `--` 透传，避免被参数解析吃掉。
+        const args = positional;
+        const cmdWord = args[0] ?? "";
+        const cur = rest.length ? rest[0] ?? "" : args[1] ?? "";
+        // 补全只读 models/registry，跳过官方目录加载，减少每次 Tab 的启动开销。
+        const agentDir = resolveAgentDir(flags.agentDir);
+        const ctx = { agentDir, paths: configPaths(agentDir), flags };
+        for (const line of completionCandidates(ctx, { command: cmdWord, word: cur })) {
+          console.log(line);
+        }
+      } catch {
+        /* 补全失败必须静默，不能打断用户输入 */
+      }
+      break;
+    }
     case "use":
     case "switch": {
-      await cmdUse(makeContext(flags), positional[0], flags);
+      await cmdUse(makeContext(flags), positional.join(" "), flags);
       break;
     }
     case "scope": {
@@ -131,8 +164,9 @@ try {
       break;
     }
     case "run": {
-      if (!positional[0]) await cmdPick(makeContext(flags), { run: true });
-      else cmdRun(makeContext(flags), positional[0], rest, flags);
+      const runTarget = positional.join(" ");
+      if (!runTarget) await cmdPick(makeContext(flags), { run: true });
+      else await cmdRun(makeContext(flags), runTarget, rest, flags);
       break;
     }
     case "install-extension":
@@ -141,6 +175,7 @@ try {
       break;
     }
     case "pick": {
+      if (positional[0]) flags.filter = positional[0];
       await cmdPick(makeContext(flags), flags);
       break;
     }

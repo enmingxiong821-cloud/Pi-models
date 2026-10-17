@@ -6,7 +6,7 @@ import path from "node:path";
 
 const { CLIPBOARD_CANDIDATES, clipboardCandidates, readClipboard, detectClipboardTool, parseEndpoint, maskKey } =
   await import("../src/clipboard.mjs");
-const { findPiLauncher, launcherNeedsShell, launcherCommand } = await import("../src/paths.mjs");
+const { findPiLauncher, launcherNeedsShell, launcherCommand, quoteShellArg } = await import("../src/paths.mjs");
 const { suggestName } = await import("../src/relay.mjs");
 
 let passed = 0;
@@ -122,6 +122,17 @@ step("用户名带空格时，Windows 启动器路径会被正确加引号", () 
   const plain = { command: "/home/me/.pi/agent/bin/pi", kind: "bin" };
   assert.equal(launcherCommand(plain), "/home/me/.pi/agent/bin/pi");
   assert.equal(launcherCommand({ command: "pi", kind: "cmd", fromPath: true }), "pi");
+});
+
+step("经 shell 启动时参数会被安全转义（模型 id 来自上游，不能直接拼接）", () => {
+  assert.equal(quoteShellArg("sonnet", "win32"), "sonnet");
+  assert.equal(quoteShellArg("gpt 5.5", "win32"), '"gpt 5.5"');
+  assert.equal(quoteShellArg("a&calc", "win32"), '"a&calc"');
+  assert.equal(quoteShellArg("a|b", "win32"), '"a|b"');
+  assert.equal(quoteShellArg("say \"hi\"", "win32"), '"say \\"hi\\""');
+  assert.throws(() => quoteShellArg("100%", "win32"), /%/);
+  assert.throws(() => quoteShellArg("a\nb", "win32"), /换行/);
+  assert.equal(quoteShellArg("it's", "linux"), `'it'\\''s'`);
 });
 
 console.error(`\n跨平台自测通过 ${passed} 项 ✅（当前系统：${process.platform} ${process.arch}）`);

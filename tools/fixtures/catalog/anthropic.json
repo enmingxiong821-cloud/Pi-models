@@ -8,6 +8,7 @@
       "input": ["text", "image"],
       "contextWindow": 200000,
       "maxTokens": 64000,
+      "promptCache": { "short": 300, "long": 3600 },
       "cost": { "input": 3, "output": 15, "cacheRead": 0.3, "cacheWrite": 3.75 }
     }
   }

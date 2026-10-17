@@ -18,6 +18,33 @@ function authHeaders(api, key) {
     : { authorization: `Bearer ${key}` };
 }
 
+/** 防止恶意/异常的中转站返回超大响应把内存吃光。 */
+export const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
+
+/** 流式读取响应体，超过 limit 直接中止，而不是先全量读进内存。 */
+export async function readTextCapped(res, limit = MAX_RESPONSE_BYTES) {
+  if (!res.body?.getReader) {
+    const text = await res.text();
+    if (Buffer.byteLength(text) > limit) throw new Error(`响应超过 ${limit} 字节，已中止`);
+    return text;
+  }
+  const reader = res.body.getReader();
+  const chunks = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > limit) throw new Error(`响应超过 ${limit} 字节，已中止`);
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock?.();
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
 async function request(url, { method = "GET", headers = {}, body, timeout = 20000 } = {}) {
   const res = await fetch(url, {
     method,
@@ -25,7 +52,7 @@ async function request(url, { method = "GET", headers = {}, body, timeout = 2000
     body: body ? JSON.stringify(body) : undefined,
     signal: AbortSignal.timeout(timeout),
   });
-  const text = await res.text();
+  const text = await readTextCapped(res);
   let json = null;
   try {
     json = JSON.parse(text);
@@ -35,22 +62,46 @@ async function request(url, { method = "GET", headers = {}, body, timeout = 2000
   return { status: res.status, ok: res.ok, json, text: text.slice(0, 400) };
 }
 
-/** 拉取中转站的模型列表。/v1/models 是最通用的探测端点，NewAPI/one-api 都支持。 */
+/**
+ * 拉取中转站的模型列表。/v1/models 是最通用的探测端点，NewAPI/one-api 都支持。
+ * 除了 id 列表，还保留原始条目（供 metadata.mjs 抽取上游元数据）。
+ */
 export async function fetchModels({ root, api, key, timeout = 20000 }) {
   const url = `${rootOf(root)}/v1/models`;
   const res = await request(url, { headers: authHeaders(api, key), timeout });
   const data = res.json?.data ?? res.json?.models ?? res.json?.result ?? null;
   const ids = [];
+  const items = [];
   if (Array.isArray(data)) {
     for (const item of data) {
-      if (typeof item === "string") ids.push(item);
-      else if (item?.id) ids.push(String(item.id));
-      else if (item?.name) ids.push(String(item.name));
+      if (typeof item === "string") {
+        ids.push(item);
+        items.push({ id: item });
+      } else if (item?.id) {
+        ids.push(String(item.id));
+        items.push(item);
+      } else if (item?.name) {
+        ids.push(String(item.name));
+        items.push(item);
+      }
     }
   } else if (data && typeof data === "object") {
-    ids.push(...Object.keys(data));
+    for (const [id, value] of Object.entries(data)) {
+      ids.push(id);
+      items.push(value && typeof value === "object" ? { id, ...value } : { id });
+    }
   }
-  return { status: res.status, ok: res.ok, ids: [...new Set(ids)].sort(), raw: res.text, url };
+  const uniqueIds = [...new Set(ids)].sort();
+  const byId = new Map();
+  for (const item of items) if (item?.id) byId.set(String(item.id), item);
+  return {
+    status: res.status,
+    ok: res.ok,
+    ids: uniqueIds,
+    items: uniqueIds.map((id) => byId.get(id) ?? { id }),
+    raw: res.text,
+    url,
+  };
 }
 
 /** 真发一条最小请求，验证 key 在这个端点上确实能用。 */

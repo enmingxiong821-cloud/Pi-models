@@ -1,6 +1,6 @@
 {
   "name": "pi-model-hub",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "把任意第三方 API（中转站 / 自建网关）接进 pi，并在 pi 里一键切换模型",
   "type": "module",
   "bin": {
@@ -27,7 +27,7 @@
   "homepage": "https://github.com/enmingxiong821-cloud/pi-model#readme",
   "scripts": {
     "pmh": "node bin/pmh.mjs",
-    "test": "node tools/smoke-test.mjs && node tools/extension-test.mjs && node tools/platform-test.mjs && node tools/rpc-test.mjs"
+    "test": "node tools/smoke-test.mjs && node tools/args-test.mjs && node tools/registry-test.mjs && node tools/keyring-test.mjs && node tools/metadata-test.mjs && node tools/import-test.mjs && node tools/relay-test.mjs && node tools/cli-v02-test.mjs && node tools/native-test.mjs && node tools/router-test.mjs && node tools/compat-test.mjs && node tools/extension-test.mjs && node tools/platform-test.mjs && node tools/rpc-test.mjs"
   },
   "files": [
     "bin",
@@ -39,5 +39,8 @@
   ],
   "engines": {
     "node": ">=20"
+  },
+  "pi": {
+    "extensions": ["./extensions/quick-switch.js", "./extensions/auto-router/index.js"]
   }
 }

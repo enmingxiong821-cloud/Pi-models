@@ -14,28 +14,39 @@ export const c = {
   blue: wrap("36"),
 };
 
+let jsonMode = false;
+
+/** --json 时把诊断信息改走 stderr，避免污染标准输出上的 JSON。 */
+export function setJsonMode(enabled) {
+  jsonMode = Boolean(enabled);
+}
+
 export function log(...args) {
   console.log(...args);
 }
 
+function diag(...args) {
+  (jsonMode ? console.error : console.log)(...args);
+}
+
 export function ok(msg) {
-  log(`${c.green("✔")} ${msg}`);
+  diag(`${c.green("✔")} ${msg}`);
 }
 
 export function warn(msg) {
-  log(`${c.yellow("!")} ${msg}`);
+  diag(`${c.yellow("!")} ${msg}`);
 }
 
 export function fail(msg) {
-  log(`${c.red("✖")} ${msg}`);
+  diag(`${c.red("✖")} ${msg}`);
 }
 
 export function info(msg) {
-  log(`${c.blue("›")} ${msg}`);
+  diag(`${c.blue("›")} ${msg}`);
 }
 
 export function heading(msg) {
-  log(`\n${c.bold(msg)}`);
+  diag(`\n${c.bold(msg)}`);
 }
 
 export function timestamp() {
@@ -54,15 +65,28 @@ export function readJson(file, fallback = null) {
 }
 
 /** 原子写 JSON，并在覆盖前留一份带时间戳的备份（可回滚）。 */
-export function writeJson(file, value, { backup = true } = {}) {
+export function writeJson(file, value, { backup = true, mode } = {}) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   let backupPath = null;
   if (backup && fs.existsSync(file)) {
-    backupPath = `${file}.bak-${timestamp()}`;
+    const base = `${file}.bak-${timestamp()}`;
+    backupPath = base;
+    // 同一秒内多次写入时，不要覆盖上一份备份
+    for (let n = 2; fs.existsSync(backupPath); n += 1) backupPath = `${base}-${n}`;
     fs.copyFileSync(file, backupPath);
+  }
+  // 没显式指定时沿用原文件权限（Windows 上 chmod 只影响只读位，无害）
+  let effectiveMode = mode;
+  if (effectiveMode === undefined) {
+    try {
+      effectiveMode = fs.statSync(file).mode & 0o777;
+    } catch {
+      /* 新文件按系统默认 */
+    }
   }
   const tmp = `${file}.tmp-${process.pid}`;
   fs.writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  if (effectiveMode !== undefined) fs.chmodSync(tmp, effectiveMode);
   fs.renameSync(tmp, file);
   return backupPath;
 }
@@ -84,11 +108,13 @@ export function listDir(p) {
   }
 }
 
-/** 把 "https://a.b/v1/" 归一化为 "https://a.b"（去掉尾部斜杠与 /v1）。 */
+/** 把 "https://a.b/v1/" 归一化为 "https://a.b"（去掉尾部斜杠、/v1 和完整端点路径）。 */
 export function rootOf(baseUrl) {
   return String(baseUrl)
     .trim()
     .replace(/\/+$/, "")
+    // 用户直接粘完整端点时（/v1/chat/completions 等），先退回到站点根
+    .replace(/\/(?:v1\/)?(?:chat\/completions|completions|responses|messages|embeddings|models)\/?$/i, "")
     .replace(/\/v1$/i, "")
     .replace(/\/+$/, "");
 }

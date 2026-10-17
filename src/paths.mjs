@@ -17,6 +17,7 @@ export function configPaths(agentDir) {
     settings: path.join(agentDir, "settings.json"),
     modelsStore: path.join(agentDir, "models-store.json"),
     extensionSettings: path.join(agentDir, "extension-settings", "provider-newapi.json"),
+    registry: path.join(agentDir, "pmh-relays.json"),
   };
 }
 
@@ -94,4 +95,17 @@ export function launcherCommand(launcher) {
   if (!launcher) return "";
   if (launcherNeedsShell(launcher) && /\s/.test(launcher.command)) return `"${launcher.command}"`;
   return launcher.command;
+}
+
+/**
+ * 经 shell 启动时给单个参数加引号。模型 id 来自上游响应，不能直接拼进命令行。
+ * Windows 走 cmd.exe：空白与元字符要加双引号；百分号会被当成变量展开，直接拒绝。
+ */
+export function quoteShellArg(value, platform = process.platform) {
+  const text = String(value);
+  if (/[\0\r\n]/.test(text)) throw new Error("参数里不能包含换行或空字符");
+  if (platform !== "win32") return `'${text.replace(/'/g, "'\\''")}'`;
+  if (text.includes("%")) throw new Error(`参数里不能包含 %（cmd 会当成变量展开）：${text}`);
+  if (!/[\s"&|<>^()]/.test(text)) return text;
+  return `"${text.replace(/"/g, '\\"')}"`;
 }

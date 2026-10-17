@@ -111,6 +111,11 @@ async function numberedFallback(items, { title, label, initialQuery }) {
   console.log(`\n${title}`);
   list.forEach((item, i) => console.log(`  ${String(i + 1).padStart(3)}. ${label(item)}`));
   if (items.length > list.length) console.log(`  … 共 ${items.length} 项，只显示前 ${list.length} 项`);
+  // 非交互环境（管道/CI）读不到输入，等 readline 会一直挂着
+  if (!process.stdin.isTTY) {
+    console.log("\n非交互环境，未做选择。请直接用 pmh use <provider#model>，或在终端里运行 pmh pick。");
+    return null;
+  }
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   const answer = await new Promise((resolve) => rl.question(`\n输入序号或关键词${initialQuery ? `（${initialQuery}）` : ""}: `, resolve));
   rl.close();
