@@ -27,7 +27,7 @@
   "homepage": "https://github.com/enmingxiong821-cloud/pi-model#readme",
   "scripts": {
     "pmh": "node bin/pmh.mjs",
-    "test": "node tools/smoke-test.mjs && node tools/extension-test.mjs && node tools/rpc-test.mjs"
+    "test": "node tools/smoke-test.mjs && node tools/extension-test.mjs && node tools/platform-test.mjs && node tools/rpc-test.mjs"
   },
   "files": [
     "bin",

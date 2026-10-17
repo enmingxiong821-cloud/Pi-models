@@ -42,7 +42,12 @@ export async function pickOne(items, { title, label = (x) => String(x), marker =
   };
 
   readline.emitKeypressEvents(stdin);
-  stdin.setRawMode(true);
+  try {
+    stdin.setRawMode(true);
+  } catch {
+    // raw mode 不可用（老控制台 / 非常规 TTY）→ 退化成输序号
+    return numberedFallback(items, { title, label, initialQuery });
+  }
   stdin.resume();
 
   return new Promise((resolve) => {

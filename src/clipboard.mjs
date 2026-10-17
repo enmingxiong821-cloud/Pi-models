@@ -1,26 +1,59 @@
 // 读系统剪贴板，用于"一键配置"：用户复制一串 "地址 + Key" 就能直接用。
+// 候选命令表按平台区分，并且可以注入假的执行器，方便在任意系统上跑单测。
 import { spawnSync } from "node:child_process";
 
-const CANDIDATES = {
-  win32: [["powershell", ["-NoProfile", "-Command", "Get-Clipboard -Raw"]]],
+/** 各平台的剪贴板读取命令，按优先级排列。 */
+export const CLIPBOARD_CANDIDATES = {
+  win32: [
+    ["pwsh", ["-NoProfile", "-Command", "Get-Clipboard -Raw"]],
+    ["powershell", ["-NoProfile", "-Command", "Get-Clipboard -Raw"]],
+  ],
   darwin: [["pbpaste", []]],
   linux: [
-    ["wl-paste", ["--no-newline"]],
+    ["wl-paste", ["--no-newline"]], // Wayland
     ["xclip", ["-selection", "clipboard", "-o"]],
     ["xsel", ["--clipboard", "--output"]],
+    ["termux-clipboard-get", []], // Android / Termux
   ],
 };
 
-export function readClipboard() {
-  for (const [bin, args] of CANDIDATES[process.platform] ?? []) {
+export function clipboardCandidates(platform = process.platform) {
+  return CLIPBOARD_CANDIDATES[platform] ?? CLIPBOARD_CANDIDATES.linux;
+}
+
+function runCommand(bin, args) {
+  const res = spawnSync(bin, args, { encoding: "utf8", timeout: 5000, windowsHide: true });
+  return res.status === 0 ? (res.stdout ?? "").trim() : "";
+}
+
+/** 读剪贴板；Windows 优先 pwsh（如有）再退到 Windows PowerShell。 */
+export function readClipboard({ platform = process.platform, run = runCommand } = {}) {
+  for (const [bin, args] of clipboardCandidates(platform)) {
     try {
-      const res = spawnSync(bin, args, { encoding: "utf8", timeout: 5000, windowsHide: true });
-      if (res.status === 0 && res.stdout?.trim()) return res.stdout.trim();
+      const text = String(run(bin, args) ?? "").trim();
+      if (text) return text;
     } catch {
       /* 换下一个工具 */
     }
   }
   return "";
+}
+
+/** doctor 用：报告这台机器上实际可用的剪贴板工具。 */
+export function detectClipboardTool({ platform = process.platform, isAvailable } = {}) {
+  const probe = isAvailable ?? ((bin) => {
+    const finder = platform === "win32" ? "where" : "which";
+    const res = spawnSync(finder, [bin], { encoding: "utf8", timeout: 5000, windowsHide: true });
+    return res.status === 0;
+  });
+  for (const [bin] of clipboardCandidates(platform)) {
+    try {
+      if (probe(bin)) return bin;
+    } catch {
+      /* 继续找 */
+    }
+  }
+  return null;
 }
 
 /**
@@ -32,7 +65,14 @@ export function readClipboard() {
 export function parseEndpoint(text) {
   const raw = String(text ?? "");
   const urlMatch = raw.match(/https?:\/\/[^\s"'`）)】,，、]+/i);
-  const url = urlMatch ? urlMatch[0].replace(/[.,;]+$/, "") : "";
+  let url = urlMatch ? urlMatch[0].replace(/[.,;]+$/, "") : "";
+  if (!url) {
+    // 允许只粘域名（api.example.com/v1），自动补 https://
+    const hostMatch = raw.match(/\b([a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+)(\/[^\s"'`）)】,，、]*)?/i);
+    if (hostMatch && /\.[a-z]{2,8}\b/i.test(hostMatch[1])) {
+      url = `https://${hostMatch[1]}${hostMatch[2] ?? ""}`;
+    }
+  }
 
   let key = "";
   const patterns = [

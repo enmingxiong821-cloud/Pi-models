@@ -4,10 +4,10 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { loadCatalog, buildModelEntry } from "./catalog.mjs";
-import { maskKey, parseEndpoint, readClipboard } from "./clipboard.mjs";
+import { detectClipboardTool, maskKey, parseEndpoint, readClipboard } from "./clipboard.mjs";
 import { searchModels } from "./match.mjs";
 import { pickOne } from "./picker.mjs";
-import { configPaths, findPiInstall, findPiLauncher, resolveAgentDir } from "./paths.mjs";
+import { configPaths, findPiInstall, findPiLauncher, launcherNeedsShell, resolveAgentDir } from "./paths.mjs";
 import { askConfirm, askSecret, askText, isInteractive, noteNonInteractive } from "./prompt.mjs";
 import { API_KINDS, apiFamily, baseUrlFor, fetchModels, probeChat, fetchRatioConfig, suggestName } from "./relay.mjs";
 import { c, fail, heading, info, log, ok, readJson, rootOf, table, truncate, warn, writeJson } from "./util.mjs";
@@ -586,7 +586,8 @@ export function cmdRun(ctx, target, piArgs, flags) {
   }
   const args = [...(provider ? ["--provider", provider] : []), ...(model ? ["--model", model] : []), ...piArgs];
   info(`启动 pi：${args.join(" ")}`);
-  const res = spawnSync(launcher.command, args, { stdio: "inherit", shell: launcher.kind === "cmd" });
+  if (launcher.fromPath) info(`没在常见位置找到 pi，交给 PATH 里的 "pi" 启动`);
+  const res = spawnSync(launcher.command, args, { stdio: "inherit", shell: launcherNeedsShell(launcher) });
   process.exit(res.status ?? 0);
 }
 
@@ -642,11 +643,16 @@ export async function cmdPick(ctx, flags) {
 export async function cmdDoctor(ctx) {
   const install = findPiInstall(ctx.agentDir);
   const launcher = findPiLauncher(ctx.agentDir);
+  const clipboardTool = detectClipboardTool();
+  const platformName = process.platform === "win32" ? "Windows" : process.platform === "darwin" ? "macOS" : "Linux / 其他 Unix";
   heading("环境体检");
+  log(`  系统            ${platformName}（${process.platform} ${process.arch}）`);
   log(`  Node            ${process.version}`);
+  log(`  交互终端        ${isInteractive() ? c.green("可用（向导 / ↑↓ 选择器）") : c.yellow("不是 TTY，只会走参数模式")}`);
+  log(`  剪贴板工具      ${clipboardTool ?? c.yellow("没找到，pmh quick 需要手动传地址和 Key")}`);
   log(`  agent 目录      ${ctx.agentDir}${fs.existsSync(ctx.agentDir) ? "" : c.yellow("（不存在）")}`);
   log(`  pi 版本         ${install.version ?? c.yellow("未检测到（不是 managed install？）")}`);
-  log(`  pi 启动器       ${launcher ? launcher.command : c.yellow("未找到")}`);
+  log(`  pi 启动器       ${launcher.fromPath ? c.yellow(`${launcher.command}（来自 PATH）`) : launcher.command}`);
   log(`  官方模型目录    ${ctx.catalog.index.size} 条${ctx.catalog.dirs.length ? `（${ctx.catalog.dirs.join("; ")}）` : c.yellow("（没找到，元数据只能靠启发式）")}`);
   for (const [label, file] of Object.entries({ "models.json": ctx.paths.models, "auth.json": ctx.paths.auth, "settings.json": ctx.paths.settings })) {
     let status = c.dim("不存在");
@@ -669,6 +675,9 @@ export async function cmdDoctor(ctx) {
   void ratio;
   log("");
   info(`备份文件都在配置文件旁边，形如 models.json.bak-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-xxxxxx，可随时手工回滚。`);
+  if (!clipboardTool) {
+    info("一键配置需要读剪贴板：Windows 自带 PowerShell，macOS 自带 pbpaste；Linux 请装 wl-clipboard 或 xclip（Termux 装 termux-api）。");
+  }
 }
 
 export function printHelp() {

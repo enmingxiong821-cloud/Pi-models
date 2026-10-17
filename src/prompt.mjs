@@ -31,9 +31,15 @@ export async function askConfirm(label, { defaultValue = true } = {}) {
 /** 掩码输入密钥：输入时只显示 *，避免密钥留在终端回滚缓冲里。 */
 export async function askSecret(label) {
   if (!process.stdin.isTTY) return "";
+  // 个别终端（老式 Windows 控制台、部分 SSH 客户端）不支持 raw mode，退化成明文输入
+  try {
+    readline.emitKeypressEvents(process.stdin);
+    process.stdin.setRawMode(true);
+  } catch {
+    warn("这个终端不支持掩码输入，密钥会明文显示");
+    return askText(label);
+  }
   process.stdout.write(`${label}: `);
-  readline.emitKeypressEvents(process.stdin);
-  process.stdin.setRawMode(true);
   process.stdin.resume();
   let value = "";
   return new Promise((resolve) => {

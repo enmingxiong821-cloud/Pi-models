@@ -30,6 +30,19 @@ macOS / Linux：`sh install.sh`。
 
 脚本做三件事：检查 Node ≥ 20 → 把 `bin/` 加进 PATH（以后直接敲 `pmh`）→ 如果检测到 pi，顺手把 `/switch` 扩展装好。
 
+## 平台支持
+
+| 平台 | 状态 | 说明 |
+|---|---|---|
+| Windows 10/11 | ✅ 主力支持 | `pmh.cmd` / `install.ps1` / 剪贴板走 PowerShell |
+| macOS | ✅ 支持 | `install.sh`，剪贴板走自带 `pbpaste` |
+| Linux 桌面 | ✅ 支持 | `install.sh`，剪贴板走 `wl-paste`（Wayland）或 `xclip`/`xsel`（X11） |
+| WSL | ✅ 支持 | 等同 Linux；如果 pi 装在 Windows 侧，用 `--agent-dir /mnt/c/Users/<你>/.pi/agent` 指过去 |
+| Termux（Android） | ✅ 支持 | `pkg install nodejs`，剪贴板需 `termux-api`（`termux-clipboard-get`） |
+| 无图形终端 / CI | ✅ 支持 | 非 TTY 自动禁用向导与箭头选择器，退化成参数模式（也可用 `PMH_NONINTERACTIVE=1` 强制） |
+
+平台相关的行为都有自测覆盖（`node tools/platform-test.mjs`），CI 在 ubuntu / windows / macOS × Node 20/22/24 上跑这套矩阵。
+
 ## 安装
 
 ```bash

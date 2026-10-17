@@ -121,9 +121,12 @@ export function suggestName(url) {
   const tlds = new Set(["com", "cn", "net", "org", "io", "co", "ai", "dev", "app", "xyz", "top", "vip", "cc", "me", "info", "tech", "site", "online", "local", "internal", "lan", "invalid", "test", "example"]);
   const drop = new Set(["www", "api", "openai", "proxy", "router", "gateway", "gw"]);
   const labels = host.split(".").filter(Boolean);
+  if (/^\d+(\.\d+){3}$/.test(host)) return host.replace(/\./g, "-"); // 直接用 IP 的中转站
   let parts = labels;
   if (parts.length > 1 && tlds.has(parts.at(-1))) parts = parts.slice(0, -1);
   while (parts.length > 1 && drop.has(parts[0])) parts = parts.slice(1);
   const name = (parts.at(-1) ?? labels[0] ?? "relay").toLowerCase().replace(/[^a-z0-9-]/g, "-");
-  return name || "relay";
+  // IDN（中文域名）会被转成 xn-- 开头，做 provider 名不好看也没意义，直接回退
+  if (!name || name.startsWith("xn--")) return "relay";
+  return name;
 }

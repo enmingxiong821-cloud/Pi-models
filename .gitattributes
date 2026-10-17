@@ -1,0 +1,19 @@
+# 统一换行，避免 Windows 上检出的 shell 脚本带 CRLF 导致 Unix 跑不起来
+* text=auto
+
+*.mjs text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.sh text eol=lf
+bin/pmh text eol=lf
+LICENSE text eol=lf
+
+# Windows 专有的脚本保持 CRLF
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# 图片/二进制
+*.png binary
+*.jpg binary

@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
         node: [20, 22, 24]
     steps:
       - uses: actions/checkout@v4
@@ -27,6 +27,9 @@ jobs:
 
       - name: 切换扩展单测
         run: node tools/extension-test.mjs
+
+      - name: 跨平台适配自测（剪贴板 / 启动器 / 名称推断）
+        run: node tools/platform-test.mjs
 
       - name: pi RPC 集成测试（未安装 pi 的机器会自动跳过）
         run: node tools/rpc-test.mjs

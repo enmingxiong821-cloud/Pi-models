@@ -61,16 +61,27 @@ export function catalogDirs(agentDir, explicit) {
   return dirs.filter((d) => fs.existsSync(d));
 }
 
-export function findPiLauncher(agentDir) {
+/**
+ * 找到 pi 的启动器。跨平台：Windows 看 pi.cmd，类 Unix 看无扩展名的 pi，
+ * 也会看常见的全局安装位置（Homebrew / ~/.local/bin），最后才回退到 PATH。
+ */
+export function findPiLauncher(agentDir, { exists = (p) => fs.existsSync(p), home = os.homedir() } = {}) {
   const candidates = [
     process.env.PMH_PI_BIN,
     path.join(agentDir, "bin", "pi.cmd"),
     path.join(agentDir, "bin", "pi"),
-    "pi",
+    path.join(home, ".local", "bin", "pi"),
+    "/usr/local/bin/pi",
+    "/opt/homebrew/bin/pi",
   ].filter(Boolean);
   for (const p of candidates) {
-    if (p === "pi") return { command: "pi", kind: "path" };
-    if (fs.existsSync(p)) return { command: p, kind: p.endsWith(".cmd") ? "cmd" : "bin" };
+    if (exists(p)) return { command: p, kind: p.endsWith(".cmd") ? "cmd" : "bin" };
   }
-  return null;
+  // 兜底交给 PATH：Windows 需要 shell 才能解析 pi.cmd（PATHEXT），类 Unix 直接 exec。
+  return { command: "pi", kind: process.platform === "win32" ? "cmd" : "path", fromPath: true };
+}
+
+/** 启动器是否需要在 shell 里跑（Windows 的 .cmd 需要）。 */
+export function launcherNeedsShell(launcher) {
+  return launcher?.kind === "cmd";
 }

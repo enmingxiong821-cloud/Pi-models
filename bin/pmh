@@ -1,0 +1,22 @@
+#!/usr/bin/env sh
+# pi-model-hub 在 macOS / Linux / Termux 上的入口（Windows 用同目录的 pmh.cmd）。
+# 支持被软链到 PATH：会先解析自身的真实路径，再去找同目录的 pmh.mjs。
+set -e
+
+src=$0
+while [ -h "$src" ]; do
+  dir=$(CDPATH= cd -- "$(dirname -- "$src")" && pwd -P)
+  link=$(readlink "$src")
+  case $link in
+    /*) src=$link ;;
+    *) src=$dir/$link ;;
+  esac
+done
+dir=$(CDPATH= cd -- "$(dirname -- "$src")" && pwd -P)
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "✗ 找不到 node，请先安装 Node 20+：https://nodejs.org" >&2
+  exit 1
+fi
+
+exec node "$dir/pmh.mjs" "$@"

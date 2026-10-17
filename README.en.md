@@ -28,6 +28,20 @@ pi> /switch sonnet      # picker with relays first, or jump straight to a match
 It checks Node ≥ 20, puts `bin/` on your PATH (so you can just type `pmh`), and installs the
 `/switch` extension into pi when pi is present.
 
+## Platform support
+
+| Platform | Status | Notes |
+|---|---|---|
+| Windows 10/11 | ✅ primary | `pmh.cmd` / `install.ps1`; clipboard via PowerShell |
+| macOS | ✅ | `install.sh`; clipboard via built-in `pbpaste` |
+| Linux desktop | ✅ | `install.sh`; clipboard via `wl-paste` (Wayland) or `xclip`/`xsel` (X11) |
+| WSL | ✅ | Same as Linux; point at a Windows-side pi with `--agent-dir /mnt/c/Users/<you>/.pi/agent` |
+| Termux (Android) | ✅ | `pkg install nodejs`; clipboard needs `termux-api` (`termux-clipboard-get`) |
+| Headless / CI | ✅ | Non-TTY environments skip the wizard and the arrow-key picker (`PMH_NONINTERACTIVE=1` forces this) |
+
+Platform-specific behavior is covered by `node tools/platform-test.mjs`, and CI runs the whole
+matrix on ubuntu / windows / macOS with Node 20, 22 and 24.
+
 ## One-shot provider setup
 
 ```bash
