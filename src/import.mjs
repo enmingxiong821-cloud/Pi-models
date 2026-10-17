@@ -781,7 +781,7 @@ export async function fetchText(url, { timeout = 15000, maxBytes = MAX_RESPONSE_
     const res = await fetch(current, {
       redirect: "manual",
       signal: AbortSignal.timeout(timeout),
-      headers: { "user-agent": "pi-model-hub" },
+      headers: { "user-agent": "pmh-cli" },
     });
     if (res.status >= 300 && res.status < 400) {
       const location = res.headers.get("location");

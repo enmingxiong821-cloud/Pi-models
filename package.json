@@ -1,5 +1,5 @@
 {
-  "name": "pi-model-hub",
+  "name": "pmh-cli",
   "version": "0.2.0",
   "description": "把任意第三方 API（中转站 / 自建网关）接进 pi，并在 pi 里一键切换模型",
   "type": "module",

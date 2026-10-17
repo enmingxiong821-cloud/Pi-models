@@ -4,7 +4,7 @@
  * 加载方式（任选）：
  *   1) 放到 ~/.pi/agent/extensions/quick-switch.js（pi 自动发现）
  *   2) 临时试用：pi --extension <此文件路径>
- *   3) 作为 pi 包安装：pi install git:github.com/<你的用户名>/pi-model-hub
+ *   3) 作为 pi 包安装：pi install git:github.com/<你的用户名>/pi-model
  *
  * 用法：
  *   /switch                    选择器：收藏 → 最近 → 中转站 → 当前 → 其他

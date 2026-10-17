@@ -48,7 +48,7 @@ export async function readTextCapped(res, limit = MAX_RESPONSE_BYTES) {
 async function request(url, { method = "GET", headers = {}, body, timeout = 20000 } = {}) {
   const res = await fetch(url, {
     method,
-    headers: { "content-type": "application/json", "user-agent": "pi-model-hub", ...headers },
+    headers: { "content-type": "application/json", "user-agent": "pmh-cli", ...headers },
     body: body ? JSON.stringify(body) : undefined,
     signal: AbortSignal.timeout(timeout),
   });
