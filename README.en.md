@@ -68,7 +68,15 @@ reasoning, input modalities, pricing). `pmh` automates all of it and adds fast s
 
 ## Install
 
-Three options, pick one:
+GitHub is the primary distribution channel; npm is an optional extra.
+
+```bash
+git clone https://github.com/enmingxiong821-cloud/pi-model.git
+cd pi-model
+node bin/pmh.mjs doctor        # check where pi lives and which config dir is used
+```
+
+Four options, pick one:
 
 1. **Run as-is**: `node bin/pmh.mjs <command>` (zero dependencies, Node 20+).
 2. **Add to PATH**: put this repo's `bin/` on your PATH, then just type `pmh`.
@@ -76,6 +84,8 @@ Three options, pick one:
    (the repo root is a conventional pi package; `package.json` declares
    `"pi": { "extensions": [...] }`, so `/switch` is available after `/reload` — no need to run
    `install-extension`)
+4. **npm (optional)**: `npm i -g pmh-cli` (the command is still `pmh`).
+   The npm package is not published yet — use one of the options above for now.
 
 ## Switch inside pi
 

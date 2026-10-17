@@ -45,19 +45,23 @@ macOS / Linux：`sh install.sh`。
 
 ## 安装
 
+以 GitHub 为主要分发方式，npm 仅作可选补充。
+
 ```bash
 git clone https://github.com/enmingxiong821-cloud/pi-model.git
 cd pi-model
 node bin/pmh.mjs doctor        # 先体检：会告诉你 pi 装在哪、配置目录是什么
 ```
 
-三种可选姿势，任选：
+四种可选姿势，任选：
 
 1. **直接用**：`node bin/pmh.mjs <命令>`（零依赖，Node 20+ 即可）
 2. **加进 PATH**：把仓库的 `bin/` 目录加入 PATH，之后直接敲 `pmh`
 3. **当成 pi 包**：`pi install git:github.com/enmingxiong821-cloud/pi-model`
    （仓库根目录就是标准的 pi 包布局，`package.json` 里已声明 `"pi": { "extensions": [...] }`，
    装完 `/reload` 就有 `/switch`，不必再跑 `install-extension`）
+4. **npm（可选）**：`npm i -g pmh-cli`（命令仍是 `pmh`）。
+   npm 渠道尚未发布，当前请优先用上面三种；发布后此方式即可用。
 
 ## 为什么需要它
 
