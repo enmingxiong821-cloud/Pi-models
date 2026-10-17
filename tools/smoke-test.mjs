@@ -7,7 +7,7 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -48,6 +48,7 @@ const step = async (name, fn) => {
 };
 
 let run;
+let runRaw;
 let base;
 let cleanup = () => {};
 
@@ -66,8 +67,22 @@ if (REAL) {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   base = `http://127.0.0.1:${server.address().port}`;
   cleanup = () => server.close();
-  run = (args) => {
-    const r = spawnSync(process.execPath, [bin, ...args, "--agent-dir", agentDir, "--catalog", FIXTURE_CATALOG], { encoding: "utf8", env: { ...process.env, PMH_NO_PROXY: "1" } });
+  runRaw = (args) => new Promise((resolve, reject) => {
+    // 必须异步 spawn：本地假服务器跑在本进程里，spawnSync 会阻塞事件循环导致请求超时。
+    const child = spawn(process.execPath, [bin, ...args, "--agent-dir", agentDir, "--catalog", FIXTURE_CATALOG], {
+      env: { ...process.env, PMH_NO_PROXY: "1" },
+    });
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.on("error", reject);
+    child.on("close", (status) => resolve({ status, stdout, stderr }));
+  });
+  run = async (args) => {
+    const r = await runRaw(args);
     assert.equal(r.status, 0, `pmh ${args.join(" ")} 失败:\n${r.stdout}\n${r.stderr}`);
     return r.stdout;
   };
@@ -126,11 +141,8 @@ const cli = REAL
       rm: (name, flags) => run(["rm", name, ...flagArgs(flags ?? {})]),
       installExtension: () => run(["install-extension"]),
       quick: (url, key, flags = {}) => run(["quick", url, key, ...flagArgs(flags)]),
-      addNoArgs: () => {
-        const r = spawnSync(process.execPath, [bin, "add", "--agent-dir", agentDir, "--catalog", FIXTURE_CATALOG], {
-          encoding: "utf8",
-          env: { ...process.env, PMH_NO_PROXY: "1", PMH_NONINTERACTIVE: "1" },
-        });
+      addNoArgs: async () => {
+        const r = await runRaw(["add"]);
         return `${r.stdout ?? ""}${r.stderr ?? ""}`;
       },
     }
@@ -182,22 +194,48 @@ try {
   });
 
   await step("ls / use / scope 正常", async () => {
-    assert.match(await run.ls(), /demo/);
-    await run.use("demo#claude-sonnet-4-5");
+    assert.match(await cli.ls(), /demo/);
+    await cli.use("demo#claude-sonnet-4-5");
     assert.equal(read("settings.json").defaultProvider, "demo");
     assert.equal(read("settings.json").defaultModel, "claude-sonnet-4-5");
-    await run.scope(["demo/*"]);
+    await cli.scope(["demo/*"]);
     assert.deepEqual(read("settings.json").enabledModels, ["demo/*"]);
   });
 
   await step("关键词模糊切换：pmh use sonnet", async () => {
-    await run.use("sonnet");
+    await cli.use("sonnet");
     const settings = read("settings.json");
     assert.equal(settings.defaultProvider, "demo");
     assert.equal(settings.defaultModel, "claude-sonnet-4-5");
-    await run.use("demo#gpt-5"); // provider 内模糊
+    await cli.use("demo#gpt-5"); // provider 内模糊
     assert.equal(read("settings.json").defaultModel, "gpt-5.5");
   });
+
+  if (!REAL) {
+    await step("换站但没给新 Key：拒绝复用旧凭据", async () => {
+      await assert.rejects(
+        run.add("demo", { base: "https://other.relay.local", force: true, yes: true, noSync: true }),
+        /避免把旧 Key 发给新站/,
+      );
+      assert.equal(read("auth.json").demo.key, KEY);
+      assert.equal(read("models.json").providers.demo.baseUrl, `${base}/v1`);
+    });
+
+    await step("换站并给新 Key：替换 auth.json 里的凭据", async () => {
+      await run.add("demo", { base: "https://other.relay.local", key: "sk-new-456", force: true, yes: true, noSync: true });
+      assert.equal(read("auth.json").demo.key, "sk-new-456");
+      assert.equal(read("models.json").providers.demo.baseUrl, "https://other.relay.local/v1");
+      // 还原，后面的用例继续用原地址与 Key
+      await run.add("demo", { base, key: KEY, force: true, yes: true, noSync: true });
+      assert.equal(read("auth.json").demo.key, KEY);
+    });
+
+    await step("use 不存在的模型：报错且不写默认值", async () => {
+      const before = read("settings.json").defaultModel;
+      await assert.rejects(run.use("demo#definitely-not-a-model"), /没有模型/);
+      assert.equal(read("settings.json").defaultModel, before);
+    });
+  }
 
   await step("install-extension 把扩展放进 pi 的扩展目录", async () => {
     const out = await cli.installExtension();
@@ -262,10 +300,16 @@ try {
     assert.ok(files.some((f) => /^models\.json\.bak-/.test(f)), files.join(","));
   });
 
-  await step("rm --purge-key 清干净", async () => {
-    await run.rm("demo", { purgeKey: true });
+  await step("rm --purge-key 清干净，并清掉含明文 Key 的旧备份", async () => {
+    const before = new Set(fs.readdirSync(agentDir));
+    const leak = path.join(agentDir, "models.json.bak-leaktest");
+    fs.writeFileSync(leak, JSON.stringify({ providers: { demo: { apiKey: "sk-leaked-in-backup" } } }));
+    await cli.rm("demo", { purgeKey: true, purgeBackups: true });
     assert.equal(read("models.json").providers.demo, undefined);
     assert.equal(read("auth.json").demo, undefined);
+    assert.equal(fs.existsSync(leak), false, "含明文 Key 的 models.json 备份应被删除");
+    const added = fs.readdirSync(agentDir).filter((f) => !before.has(f) && /^(models|auth)\.json\.bak-/.test(f));
+    assert.deepEqual(added, [], `purge-key 不应再生成含旧 Key 的备份：${added.join(",")}`);
   });
 
   console.error("\n全部通过 ✅");

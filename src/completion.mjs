@@ -14,7 +14,7 @@ const FLAGS = [
   "--group", "--tag", "--api", "--api-rule", "--base", "--key", "--key-env", "--model",
   "--models-file", "--cost-multiplier", "--no-cost", "--ratio", "--no-reasoning-compat",
   "--thinking", "--allow-builtin", "--purge-key", "--run", "--filter", "--limit", "--clear",
-  "--from", "--as", "--shell", "--no-sync", "--force", "--keep-missing", "--refresh-meta",
+  "--from", "--as", "--shell", "--no-sync", "--force", "--keep-missing", "--refresh-meta", "--reuse-key",
   "--key-in", "--name", "--no-key", "--no-chat", "--key-ref", "--key-cmd", "--prompt-cache",
   "--purge-backups", "--format", "--ctx", "--max-output", "--cost-in", "--cost-out",
   "--cache-read", "--cache-write", "--override", "--override-only", "--port", "--image",

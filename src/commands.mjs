@@ -32,14 +32,21 @@ export function makeContext(flags) {
   return { agentDir, paths, catalog, flags };
 }
 
+function plainMap(value) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? Object.assign(Object.create(null), value)
+    : Object.create(null);
+}
+
 function loadModels(ctx) {
-  const data = readJson(ctx.paths.models, { providers: {} });
-  data.providers ??= {};
+  const raw = readJson(ctx.paths.models, { providers: {} });
+  const data = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  data.providers = plainMap(data.providers);
   return data;
 }
 
 function loadAuth(ctx) {
-  return readJson(ctx.paths.auth, {}) ?? {};
+  return plainMap(readJson(ctx.paths.auth, {}) ?? {});
 }
 
 function loadSettings(ctx) {
@@ -106,7 +113,7 @@ function credentialOf(ctx, providerId) {
   const entry = auth[providerId];
   if (entry?.key) return { kind: entry.type === "api_key" || !entry.type ? "auth.json" : entry.type, value: entry.key };
   const models = loadModels(ctx);
-  const apiKey = models.providers?.[providerId]?.apiKey;
+  const apiKey = Object.hasOwn(models.providers, providerId) ? models.providers[providerId]?.apiKey : null;
   if (apiKey) {
     const env = /^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$/.exec(apiKey);
     if (env) return process.env[env[1]] ? { kind: `env:${env[1]}`, value: process.env[env[1]] } : { kind: `env:${env[1]}（未设置）`, value: null };
@@ -409,6 +416,27 @@ export async function cmdAdd(ctx, nameArg, flags) {
     probeKey = literalKey;
   }
 
+  // 换站时必须确认凭据归属，避免把旧站的 Key 发给新站（pi 会优先用 auth.json 里的旧凭据）。
+  const oldRoot = existing?.baseUrl ? rootOf(existing.baseUrl) : null;
+  const originChanged = Boolean(oldRoot && oldRoot !== root);
+  if (originChanged) {
+    const oldAuth = loadAuth(ctx)[id];
+    const hasOldAuth = Boolean(oldAuth?.key);
+    const hasOldCredential = Boolean(hasOldAuth || existing?.apiKey);
+    // 新 Key 写在 auth.json 时一定覆盖旧凭据；写在 models.json 时只在 auth 没有旧凭据时才真正生效
+    const replacedByNew = Boolean(
+      (literalKey && flags.keyIn !== "models") || (!hasOldAuth && (literalKey || keyRef)),
+    );
+    if (hasOldCredential && !replacedByNew && !flags.reuseKey) {
+      throw new Error(
+        `provider "${id}" 的地址将从 ${oldRoot} 改为 ${root}。` +
+        `为避免把旧 Key 发给新站，已停止写入。\n` +
+        `请提供新的 --key（或 --key-env / --key-cmd），确认要复用旧 Key 时加 --reuse-key。`,
+      );
+    }
+    if (flags.reuseKey && !literalKey && !keyRef) warn(`地址已变更，按 --reuse-key 继续使用原 Key`);
+  }
+
   const costMultiplier = Number(flags.costMultiplier ?? 1) || 1;
   const costMode = flags.noCost ? "off" : flags.cost === "scaled" || flags.costMultiplier ? "scaled" : "official";
 
@@ -467,6 +495,7 @@ export async function cmdAdd(ctx, nameArg, flags) {
   };
   if (keyRef) provider.apiKey = keyRef;
   else if (flags.keyIn === "models" && literalKey) provider.apiKey = literalKey;
+  else if (literalKey || (originChanged && !flags.reuseKey)) delete provider.apiKey;
 
   if (flags.dryRun) {
     heading("--dry-run：以下内容将写入 models.json");
@@ -552,9 +581,13 @@ export async function cmdSync(ctx, name, flags) {
   const provider = models.providers[id];
   if (!provider) throw new Error(`没有名为 "${id}" 的 provider，先 pmh add`);
   const cred = credentialOf(ctx, id);
-  const api = provider.api ?? flags.api ?? "openai-completions";
+  const api = flags.api ?? provider.api ?? "openai-completions";
   const root = rootOf(provider.baseUrl ?? flags.base);
   const rules = parseApiRules([].concat(flags.apiRule ?? []));
+  if (flags.api && flags.api !== provider.api) {
+    provider.api = flags.api;
+    provider.baseUrl = baseUrlFor(root, flags.api);
+  }
 
   const { ids, items, source } = await discoverIds(ctx, { name: id, root, api, key: resolveCredentialKey(cred), flags });
   if (!ids.length) {
@@ -587,7 +620,7 @@ export async function cmdSync(ctx, name, flags) {
     promptCache: Boolean(flags.promptCache),
   });
   provider.models = keepMissing ? [...entries, ...keptMissing.filter((m) => !entries.some((e) => e.id === m.id))] : entries;
-  provider.api ??= api;
+  provider.api = api;
 
   if (flags.dryRun) {
     log(JSON.stringify({ [id]: provider.models.length }, null, 2));
@@ -892,9 +925,10 @@ export function cmdKey(ctx, args, flags = {}) {
     const auth = loadAuth(ctx);
     const { registry } = loadRegistryState(ctx, { models, auth });
     removeKeyAlias(auth, registry, id, third);
-    const backup = writeJson(ctx.paths.auth, auth, { mode: 0o600 });
+    // 不备份：备份里仍含刚删除的 Key，等于没删干净
+    writeJson(ctx.paths.auth, auth, { backup: false, mode: 0o600 });
     saveRegistry(ctx, registry, { backup: false });
-    ok(`已删除 "${id}" 的 Key 别名 "${third}"${backup ? `（备份：${path.basename(backup)}）` : ""}`);
+    ok(`已删除 "${id}" 的 Key 别名 "${third}"（未生成含旧 Key 的备份）`);
     return;
   }
 
@@ -903,13 +937,14 @@ export function cmdKey(ctx, args, flags = {}) {
   if (!second) throw new Error("用法：pmh key <provider> <api-key>（或 key add/use/ls/rm）");
   const auth = loadAuth(ctx);
   auth[id] = { ...(auth[id] ?? {}), type: "api_key", key: second };
-  const backup = writeJson(ctx.paths.auth, auth, { mode: 0o600 });
+  // 不备份：旧 Key 会留在备份文件里
+  writeJson(ctx.paths.auth, auth, { backup: false, mode: 0o600 });
   const { registry } = loadRegistryState(ctx, { models, auth });
   if (registry.relays[id]) {
     registry.relays[id].activeKey = "default";
     saveRegistry(ctx, registry, { backup: false });
   }
-  ok(`已把 ${id} 的密钥写入 ${ctx.paths.auth}${backup ? `（备份：${path.basename(backup)}）` : ""}`);
+  ok(`已把 ${id} 的密钥写入 ${ctx.paths.auth}（未生成含旧 Key 的备份）`);
 }
 
 // ---- 分组 / 收藏 / 最近使用 / 元数据 ----
@@ -1400,6 +1435,7 @@ async function applyImport(ctx, items, flags) {
 
   heading("导入完成");
   log(`  新增/更新 ${added} 项，Key 别名 ${aliased} 项，失败 ${failed} 项`);
+  if (failed) process.exitCode = 1;
   if (added) {
     info("切换：pmh pick / pmh use <名称>#<模型>；在 pi 里用 /switch");
     info("体检：pmh ls / pmh meta <名称> --drift");
@@ -1419,6 +1455,7 @@ export async function cmdImport(ctx, sources, flags = {}) {
   if (!items.length) {
     warn("没有解析出任何可导入的站点。");
     info(`支持的格式：地址+Key、JSON、JSONL、env、YAML、curl、pmh:// / ccswitch:// 链接、base64 订阅、Claude Code / Codex / cc-switch 配置`);
+    process.exitCode = 1;
     return;
   }
 
@@ -1641,7 +1678,7 @@ function resolveTarget(ctx, target) {
   const raw = String(target ?? "").trim();
   if (!raw) return { provider: null, model: null };
   const explicit = /^([^#/]+)[#/](.+)$/.exec(raw);
-  if (explicit && models.providers[explicit[1]]) {
+  if (explicit && Object.hasOwn(models.providers, explicit[1])) {
     const provider = explicit[1];
     const q = explicit[2].trim();
     const entries = (models.providers[provider].models ?? []).map((m) => ({ provider, model: m.id, name: m.name ?? m.id }));
@@ -1649,7 +1686,7 @@ function resolveTarget(ctx, target) {
     if (!hits.length) return { provider, model: q, exact: true };
     return { provider, model: hits[0].model, hits, query: q, exact: hits[0].model === q };
   }
-  if (models.providers[raw]) return { provider: raw, model: null, exact: true };
+  if (Object.hasOwn(models.providers, raw)) return { provider: raw, model: null, exact: true };
   const hits = searchModels(allEntries(ctx).filter((e) => e.model), raw);
   if (!hits.length) return { provider: null, model: null, hits: [], query: raw };
   return { provider: hits[0].provider, model: hits[0].model, hits, query: raw, exact: hits[0].model === raw };
@@ -1659,6 +1696,21 @@ function reportAlternatives(resolved, usedLabel) {
   if (!resolved.hits || resolved.hits.length <= 1) return;
   const others = resolved.hits.slice(1, 5).map((h) => `${h.provider}#${h.model}`);
   info(`"${resolved.query}" 还匹配到 ${resolved.hits.length - 1} 个，已用最贴近的 ${usedLabel}；其他：${others.join("、")}`);
+}
+
+/** 已配置的 provider 里必须存在该模型；留空/未同步/provider 未配置时放行。 */
+function assertConfiguredModel(ctx, provider, model, { force = false } = {}) {
+  if (!provider || !model || model === "*" || force) return;
+  const models = loadModels(ctx);
+  if (!Object.hasOwn(models.providers, provider)) return;
+  const ids = (models.providers[provider].models ?? []).map((m) => m.id);
+  if (!ids.length || ids.includes(model)) return;
+  const hits = searchModels(ids.map((id) => ({ provider, model: id, name: id })), model);
+  const suggestions = hits.slice(0, 5).map((h) => h.model);
+  throw new Error(
+    `"${provider}" 里没有模型 "${model}"。` +
+    (suggestions.length ? `你是不是想用：${suggestions.join("、")}` : `先 pmh ls ${provider} 查看，或 pmh sync ${provider}`),
+  );
 }
 
 export async function cmdUse(ctx, target, flags) {
@@ -1716,15 +1768,16 @@ export async function cmdUse(ctx, target, flags) {
   }
   const resolved = resolveTarget(ctx, target);
   const { provider, model } = resolved;
+  assertConfiguredModel(ctx, provider, model, { force: Boolean(flags.force) });
   const models = loadModels(ctx);
   const settings = loadSettings(ctx);
   const previousDefault = { provider: settings.defaultProvider ?? null, model: settings.defaultModel ?? null };
   if (provider) {
-    if (!models.providers[provider] && !flags.allowBuiltin) {
+    if (!Object.hasOwn(models.providers, provider) && !flags.allowBuiltin) {
       warn(`"${provider}" 不在 models.json 里（内置厂商请加 --allow-builtin）`);
     }
     settings.defaultProvider = provider;
-    if ((!model || model === "*") && models.providers[provider]) {
+    if ((!model || model === "*") && Object.hasOwn(models.providers, provider)) {
       const ids = (models.providers[provider].models ?? []).map((m) => m.id);
       let next = settings.defaultModel && ids.includes(settings.defaultModel) ? settings.defaultModel : null;
       if (!next) {
@@ -1749,7 +1802,7 @@ export async function cmdUse(ctx, target, flags) {
   try {
     const { registry } = loadRegistryState(ctx, { models });
     let touched = false;
-    if (model && model !== "*" && models.providers[provider]) {
+    if (model && model !== "*" && Object.hasOwn(models.providers, provider)) {
       touched = recordUse(registry, provider, model) || touched;
     }
     const changed = previousDefault.provider !== (settings.defaultProvider ?? null) ||
@@ -1810,10 +1863,15 @@ function backupsContaining(file, needles) {
 export function cmdRm(ctx, name, flags) {
   const id = normalizeProviderName(name);
   const models = loadModels(ctx);
-  if (!models.providers[id]) throw new Error(`没有名为 "${id}" 的 provider`);
+  if (!Object.hasOwn(models.providers, id)) throw new Error(`没有名为 "${id}" 的 provider`);
+  const literalInModels = typeof models.providers[id]?.apiKey === "string" ? models.providers[id].apiKey : null;
   delete models.providers[id];
-  const backup = writeJson(ctx.paths.models, models);
-  ok(`已从 models.json 移除 "${id}"${backup ? `（备份：${path.basename(backup)}）` : ""}`);
+  // --purge-key 时不留新备份：备份会包含刚删掉的明文 Key
+  const backup = writeJson(ctx.paths.models, models, { backup: !flags.purgeKey });
+  ok(
+    `已从 models.json 移除 "${id}"` +
+    `${backup ? `（备份：${path.basename(backup)}）` : flags.purgeKey ? "（未生成含 Key 的备份）" : ""}`,
+  );
 
   const settings = loadSettings(ctx);
   let settingsChanged = false;
@@ -1868,7 +1926,11 @@ export function cmdRm(ctx, name, flags) {
     }
 
     const needles = [`"${id}"`, ...removedKeys.map((key) => `"${key}"`)];
-    const stale = backupsContaining(ctx.paths.auth, needles);
+    if (literalInModels) needles.push(literalInModels);
+    const stale = [...new Set([
+      ...backupsContaining(ctx.paths.auth, needles),
+      ...backupsContaining(ctx.paths.models, needles),
+    ])];
     if (stale.length && flags.purgeBackups) {
       let purged = 0;
       for (const file of stale) {
@@ -1881,7 +1943,7 @@ export function cmdRm(ctx, name, flags) {
       }
       if (purged) ok(`已清理 ${purged} 个含该站凭据的旧备份`);
     } else if (stale.length) {
-      warn(`还有 ${stale.length} 个旧备份包含该站凭据（${stale.slice(0, 3).map((f) => path.basename(f)).join("、")}${stale.length > 3 ? " 等" : ""}）`);
+      warn(`还有 ${stale.length} 个旧备份包含该站凭据或明文 Key（${stale.slice(0, 3).map((f) => path.basename(f)).join("、")}${stale.length > 3 ? " 等" : ""}）`);
       info(`要一并删除：pmh rm ${id} --purge-key --purge-backups`);
     }
   } else {
@@ -1903,16 +1965,20 @@ export async function cmdTest(ctx, name, flags) {
   log(`  凭据   ${cred.kind}${cred.value || cred.command ? "" : c.yellow("（不可用）")}`);
 
   let key = null;
+  let failed = false;
   try {
     key = resolveCredentialKey(cred);
   } catch (err) {
     fail(err.message);
-    return;
+    failed = true;
   }
   const res = await fetchModels({ root, api, key });
   if (res.ok && res.ids.length) ok(`GET /v1/models 正常：${res.ids.length} 个模型`);
   else if (res.ok) warn(`GET /v1/models 返回 200 但没有模型列表`);
-  else fail(`GET /v1/models 返回 ${res.status}${flags.verbose ? `: ${res.raw}` : ""}`);
+  else {
+    fail(`GET /v1/models 返回 ${res.status}${flags.verbose ? `: ${res.raw}` : ""}`);
+    failed = true;
+  }
 
   if (res.ids.length) {
     const configured = new Set((provider.models ?? []).map((m) => m.id));
@@ -1929,17 +1995,21 @@ export async function cmdTest(ctx, name, flags) {
       try {
         const probe = await probeChat({ root, api: api2, key, model });
         if (probe.ok) ok(`试聊成功：${model}（${probe.ms} ms）→ ${truncate(probe.text ?? "(空回复)", 60)}`);
-        else fail(`试聊失败：${model} HTTP ${probe.status} ${truncate(probe.error ?? "", 200)}`);
+        else {
+          fail(`试聊失败：${model} HTTP ${probe.status} ${truncate(probe.error ?? "", 200)}`);
+          failed = true;
+        }
       } catch (err) {
         fail(`试聊异常：${err.message}`);
+        failed = true;
       }
     }
   }
+  if (failed) process.exitCode = 1;
 }
 
 export async function cmdRun(ctx, target, piArgs, flags) {
   const launcher = findPiLauncher(ctx.agentDir);
-  if (!launcher) throw new Error("没找到 pi 启动器，检查 ~/.pi/agent/bin/pi.cmd 是否在，或用 PMH_PI_BIN 指定");
 
   if (target && isFilterSpec(target)) {
     const entries = entriesForSpec(ctx, target);
@@ -1959,6 +2029,7 @@ export async function cmdRun(ctx, target, piArgs, flags) {
 
   const resolved = resolveTarget(ctx, target);
   const { provider, model } = resolved;
+  assertConfiguredModel(ctx, provider, model, { force: Boolean(flags.force) });
   if (!provider && target) {
     warn(`没有匹配 "${target}" 的模型，直接启动 pi（可 pmh ls --models 查看可用项）`);
   }
@@ -1979,7 +2050,11 @@ export async function cmdRun(ctx, target, piArgs, flags) {
         shell: true,
       })
     : spawnSync(launcherCommand(launcher), args, { stdio: "inherit" });
-  process.exit(res.status ?? 0);
+  if (res.error) {
+    fail(`无法启动 pi：${res.error.message}`);
+    process.exit(1);
+  }
+  process.exit(res.status ?? 1);
 }
 
 const AUTO_EXT_SOURCE = path.join(REPO_ROOT, "extensions", "auto-router");
@@ -2415,6 +2490,7 @@ export async function cmdDoctor(ctx) {
   }
   log(`  官方模型目录    ${ctx.catalog.index.size} 条${ctx.catalog.dirs.length ? `（${ctx.catalog.dirs.join("; ")}）` : c.yellow("（没找到，元数据只能靠启发式）")}`);
   const builtins = loadBuiltinProviders(ctx.agentDir).providers;
+  let problems = 0;
   log(`  内置 provider   ${builtins.size} 个${builtins.size ? `（可用 pmh model override <内置> <模型> 改元数据）` : ""}`);
   for (const [label, file] of Object.entries({
     "models.json": ctx.paths.models,
@@ -2429,6 +2505,7 @@ export async function cmdDoctor(ctx) {
         status = c.green("正常");
       } catch (err) {
         status = c.red(`JSON 损坏：${err.message}`);
+        problems += 1;
       }
     }
     log(`  ${label.padEnd(14)} ${status}  ${c.dim(file)}`);
@@ -2450,17 +2527,24 @@ export async function cmdDoctor(ctx) {
       } else {
         for (const item of report.errors) log(`  ${c.red("✖")} ${item.path ? `${item.path}：` : ""}${item.message}`);
         for (const item of report.warnings) log(`  ${c.yellow("!")} ${item.path ? `${item.path}：` : ""}${item.message}`);
-        if (report.errors.length) info("✖ 是 pi 会拒绝或读取不到的配置，建议先修；! 是不致命但可能不生效的配置。");
+        if (report.errors.length) {
+          problems += report.errors.length;
+          info("✖ 是 pi 会拒绝或读取不到的配置，建议先修；! 是不致命但可能不生效的配置。");
+        }
       }
     } catch (err) {
       warn(`models.json 无法校验：${err.message}`);
+      problems += 1;
     }
   }
   const { registry, stale, corrupt, reason, changed } = loadRegistryState(ctx);
   const relayCount = Object.keys(registry.relays).length;
   const aliasCount = Object.values(registry.relays).reduce((n, r) => n + Math.max(0, (r.keyAliases ?? []).length - 1), 0);
   log(`  注册表内容      ${relayCount} 个站、${Object.keys(registry.groups).length} 个分组、${aliasCount} 个 Key 别名、widget=${registry.settings.widget}`);
-  if (corrupt) warn(`注册表损坏，已按空表处理：${reason}（下次写操作会重建）`);
+  if (corrupt) {
+    warn(`注册表损坏，已按空表处理：${reason}（下次写操作会重建）`);
+    problems += 1;
+  }
   if (stale.length) warn(`注册表里有 ${stale.length} 个站已不在 models.json：${stale.join(", ")}（pmh rm 或手工清理）`);
   if (changed) info("注册表与 models.json 有差异，会在下次写操作时自动对齐（只读命令不会写盘）。");
   const metaRelays = Object.values(registry.relays).filter((r) => r.lastSyncedAt);
@@ -2477,6 +2561,7 @@ export async function cmdDoctor(ctx) {
   if (!clipboardTool) {
     info("一键配置需要读剪贴板：Windows 自带 PowerShell，macOS 自带 pbpaste；Linux 请装 wl-clipboard 或 xclip（Termux 装 termux-api）。");
   }
+  if (problems) process.exitCode = 1;
 }
 
 export function printHelp() {
@@ -2510,7 +2595,8 @@ ${c.bold("命令")}
              [--model id1,id2 | --models-file f] [--cost-multiplier 0.2 | --no-cost]
              [--ratio] [--no-reasoning-compat] [--prompt-cache] [--group 组] [--tag 标签]
              [--key-in models] [--name 显示名] [--no-key] [--yes] [--force] [--no-sync]
-             [--refresh-meta] [--dry-run] [--verbose]
+             [--reuse-key] [--refresh-meta] [--dry-run] [--verbose]
+             改站点地址时必须提供新 Key；确认要复用旧 Key 才加 --reuse-key
              不带参数即进入向导；地址/协议可省略（更新已有 provider 时）；别名 setup / init
   quick [地址] [key] [--as 名称]    一键接入：缺的参数从剪贴板里认；别名 go
   local <ollama|lmstudio|vllm|sglang|llama-cpp> [--port 端口] [--as 名称]
@@ -2567,6 +2653,8 @@ ${c.bold("命令")}
   completion [powershell|bash|zsh|fish]   输出 shell 补全脚本（不带参数则自动识别）
   alias [--shell powershell|bash]
   rm <名称> [--purge-key [--purge-backups]]
+                                移除 provider；--purge-key 连凭据一起删（不再生成含 Key 的新备份），
+                                --purge-backups 再清掉历史备份里含该站凭据的文件
   feedback [问题描述] [--print] [--open] [--json]
                                 生成脱敏环境报告并打开 GitHub Issue（不含 Key / 站点地址）
   bootstrap [地址] [--copy] [--no-extension] [--no-config]
@@ -2577,6 +2665,9 @@ ${c.bold("全局参数")}
   --agent-dir <dir>   覆盖 ~/.pi/agent（也可用 PMH_AGENT_DIR）
   --catalog <dir>     覆盖官方模型目录来源
   --proxy <url>       强制走代理（默认读 HTTPS_PROXY/HTTP_PROXY）
+
+${c.bold("退出码")}
+  成功为 0；test / doctor / import 发现失败项时返回 1（便于脚本与 CI 判断）。
 `);
 }
 

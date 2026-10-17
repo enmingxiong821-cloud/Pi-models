@@ -239,7 +239,7 @@ Inside pi, `/feedback` gives you the same entry point.
 | Command | Purpose |
 |---|---|
 | `pmh quick [url] [key]` | One-shot setup: URL + key (or clipboard) → fetch models → pick a default |
-| `pmh add <name> [--base <url>] [--key <key>]` | Add/update a provider, discover models, fill metadata; when updating, `--base`/`--api` may be omitted and the existing values are reused |
+| `pmh add <name> [--base <url>] [--key <key>]` | Add/update a provider, discover models, fill metadata; when updating, `--base`/`--api` may be omitted and the existing values are reused. Changing the base requires a new key; add `--reuse-key` only if you really mean to keep the old one |
 | `pmh local <ollama\|lmstudio\|vllm\|sglang\|llama-cpp> [--port N] [--as name]` | One-command local endpoint: fills address/protocol and a placeholder key, then discovers models (works even before the server is running) |
 | `pmh model ls [provider] [--json]` | List one provider's `models` and `modelOverrides`, including built-in providers |
 | `pmh model add <provider> <model-id> [--ctx 200k] [--max-output 64k] [--reasoning] [--image] [--cost-in 3 --cost-out 15]` | Add/replace a single model under any provider (built-in included), with metadata filled in |
@@ -270,12 +270,13 @@ Inside pi, `/feedback` gives you the same entry point.
 | `pmh bootstrap [url] [--copy] [--no-extension] [--no-config]` | One-shot setup: install extensions + configure a relay + choose a default model (called by the installer) |
 | `pmh completion [powershell\|bash\|zsh\|fish]` | Print a shell completion script (auto-detects `$SHELL`/platform when omitted) |
 | `pmh alias` | Generate `pi-<provider>` shell shortcuts |
-| `pmh rm <name> [--purge-key [--purge-backups]]` | Remove a provider (and optionally all its keys/aliases; `--purge-backups` also removes old backups containing them); also drops its `defaultProvider` / `enabledModels` entries from `settings.json` and its toggle-back history |
+| `pmh rm <name> [--purge-key [--purge-backups]]` | Remove a provider (and optionally all its keys/aliases; `--purge-key` no longer writes new backups containing the key, and `--purge-backups` also removes old `models.json` / `auth.json` backups that contain its credentials); also drops its `defaultProvider` / `enabledModels` entries from `settings.json` and its toggle-back history |
 | `pmh doctor` | Environment check: pi version, config paths, built-in provider count, `models.json` structure/model/credential/default checks, registry health |
 | `pmh feedback [description] [--print\|--open] [--json]` | Build a redacted environment report and open a prefilled GitHub issue (no keys, relay URLs or model names; never submits automatically) |
 
 Useful flags:
 
+- `--reuse-key`: only for `pmh add` when changing a provider's base URL, to explicitly keep the existing key (otherwise the change is rejected so credentials are never sent to a new host)
 - `--api openai-completions | openai-responses | anthropic-messages`
 - `--api-rule "^claude=anthropic-messages"` (repeatable) — route per model, handy when one
   relay serves both Claude and GPT
@@ -290,6 +291,8 @@ Useful flags:
   `--image` / `--text-only`, `--cost-in 3 --cost-out 15 [--cache-read 0.3 --cache-write 3.75]`,
   `--name`, `--override-only`, `--override`
 - `--agent-dir <dir>` / `--catalog <dir>` / `--proxy <url>` / `--dry-run` / `--verbose`
+
+Exit codes: `0` on success; `test`, `doctor` and `import` return `1` when anything fails, so scripts and CI can detect it (`run` passes through pi's exit code).
 
 Already using cc-switch? `pmh import --from ccswitch` reads its legacy `config.json`. For v4
 (SQLite storage), use cc-switch's Share action to produce a `ccswitch://v1/import?...` link and

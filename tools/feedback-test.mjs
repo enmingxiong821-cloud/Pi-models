@@ -96,6 +96,17 @@ step("redact：api_key=... 与超长输入截断", () => {
   assert.match(long, /已截断/);
 });
 
+step("redact：JSON、查询参数与 Basic 认证也不泄露", () => {
+  const input = '{"api_key":"foobar","token":"abc"} ?key=plainvalue Authorization: Basic dXNlcjpwYXNz';
+  const out = redact(input, { home: "" });
+  for (const secret of ["foobar", "abc", "plainvalue", "dXNlcjpwYXNz"]) {
+    assert.equal(out.includes(secret), false, `仍然泄露：${secret}\n${out}`);
+  }
+  assert.match(out, /"api_key":"\*\*\*"/);
+  assert.match(out, /\?key=\*\*\*/);
+  assert.match(out, /Basic \*\*\*/);
+});
+
 step("collectDiagnostics：只给计数，不含站点/模型/密文", () => {
   const ctx = fixture();
   const d = collectDiagnostics(ctx, { home: HOME, platform: "win32", arch: "x64", nodeVersion: "v24.0.0", osRelease: "10.0" });

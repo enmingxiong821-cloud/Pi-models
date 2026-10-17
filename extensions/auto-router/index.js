@@ -225,7 +225,7 @@ export default function (pi) {
       // 失败重试：先固定用失败前那个模型；可选升一档，并且每个会话只升一次。
       if (request.reason === "retry") {
         const failed = request.failed?.model;
-        if (config.upgradeOnRetry && state.tier && !state.escalated) {
+        if (config.enabled && config.upgradeOnRetry && state.tier && !state.escalated) {
           const nextTier = bumpTier(state.tier);
           if (nextTier !== state.tier) {
             const picked = pickTier(ctx, config, nextTier);

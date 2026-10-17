@@ -22,14 +22,14 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
 
-      - name: 端到端自测（进程内打桩，不依赖网络与 pi）
-        run: node tools/smoke-test.mjs
+      - name: 全量自测（进程内打桩，不依赖网络与 pi）
+        run: npm test
 
-      - name: 切换扩展单测
-        run: node tools/extension-test.mjs
+      - name: 安装器自测（macOS / Linux）
+        if: runner.os != 'Windows'
+        run: sh ./install.sh --no-setup --no-path --dir "$RUNNER_TEMP/pmh-install"
 
-      - name: 跨平台适配自测（剪贴板 / 启动器 / 名称推断）
-        run: node tools/platform-test.mjs
-
-      - name: pi RPC 集成测试（未安装 pi 的机器会自动跳过）
-        run: node tools/rpc-test.mjs
+      - name: 安装器自测（Windows）
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./install.ps1 -NoSetup -NoPath -Dir "$env:RUNNER_TEMP/pmh-install"

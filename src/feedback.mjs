@@ -29,6 +29,9 @@ const SECRET_PATTERNS = [
   [/\bgithub_pat_[A-Za-z0-9_]{20,}/g, "github_pat_***"],
   [/\bxox[abprs]-[A-Za-z0-9-]{10,}/g, "xox*-***"],
   [/\b(Bearer\s+)[A-Za-z0-9._~+/-]+=*/gi, "$1***"],
+  [/\b(Basic\s+)[A-Za-z0-9+/=]{6,}/gi, "$1***"],
+  [/([?&](?:key|api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|password)=)[^&\s#]+/gi, "$1***"],
+  [/(["']?(?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|password|authorization)["']?\s*[:=]\s*["']?)(?!\*\*\*|Bearer\s|Basic\s)[^"'\s,;}]+/gi, "$1***"],
   [/\b((?:api[_-]?key|access[_-]?token|secret|password)\s*[:=]\s*)[^\s,;"'}]+/gi, "$1***"],
 ];
 

@@ -52,6 +52,30 @@ export function registryFile() {
   return path.join(agentDir(), "pmh-relays.json");
 }
 
+/** 注册表损坏时先留一份副本再按空表继续，避免下一次写操作把原数据彻底覆盖。 */
+function readRegistryFile() {
+  const file = registryFile();
+  let text;
+  try {
+    text = fs.readFileSync(file, "utf8");
+  } catch {
+    return {};
+  }
+  try {
+    const data = JSON.parse(text);
+    return data && typeof data === "object" && !Array.isArray(data) ? data : {};
+  } catch (err) {
+    const backup = `${file}.corrupt-${Date.now()}`;
+    try {
+      fs.copyFileSync(file, backup);
+      console.error(`[pmh] 注册表损坏，已备份到 ${backup}：${err.message}`);
+    } catch {
+      /* 备份失败时仍继续，至少不让扩展崩溃 */
+    }
+    return {};
+  }
+}
+
 /** models.json 里登记的 provider —— 也就是我们接的中转站，切换时优先展示。 */
 export function relayProviders() {
   const models = readJson(path.join(agentDir(), "models.json"), {});
@@ -63,7 +87,7 @@ export function relayProviders() {
  * 只读，不落盘；写操作走 saveRegistry。
  */
 export function readRegistry() {
-  const stored = readJson(registryFile(), {}) ?? {};
+  const stored = readRegistryFile();
   const registry = {
     version: stored.version ?? 1,
     groups: stored.groups && typeof stored.groups === "object" ? stored.groups : {},

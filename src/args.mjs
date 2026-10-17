@@ -3,6 +3,14 @@
 /** 允许重复出现的参数（其余重复时取最后一个，避免下游拿到数组）。 */
 const REPEATABLE = new Set(["apiRule", "file", "from", "tag"]);
 
+/** 需要取值的参数；其余长参数一律按布尔开关处理，避免吞掉后面的位置参数。 */
+const VALUE_FLAGS = new Set([
+  "agentDir", "api", "apiRule", "as", "base", "baseUrl", "cacheRead", "cacheWrite", "catalog",
+  "cost", "costIn", "costMultiplier", "costOut", "ctx", "displayName", "file", "filter", "format",
+  "from", "group", "key", "keyCmd", "keyEnv", "keyIn", "keyRef", "limit", "local", "maxOutput",
+  "model", "modelsFile", "name", "proxy", "shell", "source", "tag", "thinking", "title",
+]);
+
 export function parseArgs(argv) {
   const flags = {};
   const positional = [];
@@ -31,7 +39,7 @@ export function parseArgs(argv) {
       }
       if (value === undefined) {
         const next = argv[i + 1];
-        if (next !== undefined && !next.startsWith("--")) {
+        if (VALUE_FLAGS.has(camel) && next !== undefined && !next.startsWith("--")) {
           value = next;
           i += 1;
         } else {

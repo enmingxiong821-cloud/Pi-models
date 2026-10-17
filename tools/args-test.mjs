@@ -42,6 +42,24 @@ step("`--` 之后的参数原样透传给 pi", () => {
   assert.deepEqual(rest, ["--foo", "bar baz"]);
 });
 
+step("布尔开关不会吞掉后面的位置参数", () => {
+  const a = parseArgs(["--json", "ls"]);
+  assert.equal(a.flags.json, true);
+  assert.deepEqual(a.positional, ["ls"]);
+
+  const b = parseArgs(["rm", "--purge-key", "foo"]);
+  assert.equal(b.flags.purgeKey, true);
+  assert.deepEqual(b.positional, ["rm", "foo"]);
+
+  const c = parseArgs(["use", "--allow-builtin", "openai#gpt-5"]);
+  assert.equal(c.flags.allowBuiltin, true);
+  assert.deepEqual(c.positional, ["use", "openai#gpt-5"]);
+
+  const d = parseArgs(["--reuse-key", "quick", "https://x.test"]);
+  assert.equal(d.flags.reuseKey, true);
+  assert.deepEqual(d.positional, ["quick", "https://x.test"]);
+});
+
 step("短横线只作为无值开关", () => {
   const { flags, positional } = parseArgs(["-h", "-v"]);
   assert.equal(flags.h, true);

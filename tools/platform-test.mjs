@@ -129,8 +129,10 @@ step("经 shell 启动时参数会被安全转义（模型 id 来自上游，不
   assert.equal(quoteShellArg("gpt 5.5", "win32"), '"gpt 5.5"');
   assert.equal(quoteShellArg("a&calc", "win32"), '"a&calc"');
   assert.equal(quoteShellArg("a|b", "win32"), '"a|b"');
-  assert.equal(quoteShellArg("say \"hi\"", "win32"), '"say \\"hi\\""');
+  // cmd.exe 不认反斜杠转义，内嵌双引号无法安全表示，必须拒绝而不是拼出可注入的命令
+  assert.throws(() => quoteShellArg("say \"hi\"", "win32"), /无法安全转义/);
   assert.throws(() => quoteShellArg("100%", "win32"), /%/);
+  assert.throws(() => quoteShellArg("a!b", "win32"), /!/);
   assert.throws(() => quoteShellArg("a\nb", "win32"), /换行/);
   assert.equal(quoteShellArg("it's", "linux"), `'it'\\''s'`);
 });

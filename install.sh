@@ -42,6 +42,12 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+case "$DIR" in
+  "~/"*) DIR="$HOME/${DIR#~/}" ;;
+  /*) ;;
+  *) DIR="$(pwd)/$DIR" ;;
+esac
+
 if ! command -v node >/dev/null 2>&1; then
   echo "✗ 没找到 Node.js，请先安装 Node 20+：https://nodejs.org" >&2
   echo "  Termux: pkg install nodejs；macOS: brew install node" >&2
@@ -162,7 +168,7 @@ if [ "$NO_PATH" -eq 0 ]; then
       MARKER="# pmh: add to PATH"
       LINE="export PATH=\"$LINK_DIR:\$PATH\""
       UPDATED=0
-      for rc in "$HOME/.profile" "$HOME/.bashrc" "$HOME/.zshrc"; do
+      for rc in "$HOME/.profile" "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.zshrc" "$HOME/.zprofile"; do
         [ -f "$rc" ] || continue
         if ! grep -qF "$MARKER" "$rc" 2>/dev/null; then
           printf '\n%s\n%s\n' "$MARKER" "$LINE" >> "$rc"
@@ -202,4 +208,8 @@ if [ "$SETUP" -eq 1 ]; then
 fi
 
 echo ""
-echo "完成。重开终端后可直接运行 pmh；在 pi 里输入 /switch。"
+if [ "$SETUP" -eq 1 ]; then
+  echo "完成。重开终端后可直接运行 pmh；若还没配置中转站，先运行 pmh bootstrap，再在 pi 里输入 /switch。"
+else
+  echo "安装完成。运行 pmh bootstrap 安装扩展并配置中转站；完成后再在 pi 里输入 /switch。"
+fi

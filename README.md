@@ -245,7 +245,7 @@ pi 里也可以直接输入 `/feedback` 获取同样的入口。
 
 | 命令 | 作用 |
 |---|---|
-| `pmh add <名称> [--base <url>] [--key <key>]` | 新增/更新一个 provider，自动发现模型并补全元数据；更新已有站点时可省略地址与协议（沿用原值） |
+| `pmh add <名称> [--base <url>] [--key <key>]` | 新增/更新一个 provider，自动发现模型并补全元数据；更新已有站点时可省略地址与协议（沿用原值）。改地址时必须给新 Key，确认要复用旧 Key 才加 `--reuse-key`，避免把旧凭据发给新站 |
 | `pmh local <ollama\|lmstudio\|vllm\|sglang\|llama-cpp> [--port N] [--as 名称]` | 本机推理服务一键接入：自动填地址/协议/占位 Key，再读模型列表（服务没启动也能先写好配置） |
 | `pmh model ls [provider] [--json]` | 列出单个 provider 的 `models` 与 `modelOverrides`，内置 provider 也能看 |
 | `pmh model add <provider> <模型id> [--ctx 200k] [--max-output 64k] [--reasoning] [--image] [--cost-in 3 --cost-out 15]` | 在任意 provider（含 pi 内置）下新增/替换一个模型，元数据自动补全 |
@@ -277,12 +277,13 @@ pi 里也可以直接输入 `/feedback` 获取同样的入口。
 | `pmh bootstrap [地址] [--copy] [--no-extension] [--no-config]` | 一键初始化：装扩展 + 配置中转站 + 选默认模型（安装脚本最后调用的就是它） |
 | `pmh completion [powershell\|bash\|zsh\|fish]` | 输出 shell 补全脚本；不带参数时按 `$SHELL`/平台自动识别 |
 | `pmh alias [--shell powershell\|bash]` | 生成 `pi-<provider>` 快捷命令 |
-| `pmh rm <名称> [--purge-key [--purge-backups]]` | 移除 provider（可选连密钥和所有 Key 别名一起删；`--purge-backups` 再清掉含该站凭据的旧备份）；顺手清掉 `settings.json` 里指向它的 `defaultProvider` / `enabledModels`，以及回退历史 |
+| `pmh rm <名称> [--purge-key [--purge-backups]]` | 移除 provider（可选连密钥和所有 Key 别名一起删；`--purge-key` 不再生成含 Key 的新备份，`--purge-backups` 再清掉 `models.json` / `auth.json` 历史备份里含该站凭据的文件）；顺手清掉 `settings.json` 里指向它的 `defaultProvider` / `enabledModels`，以及回退历史 |
 | `pmh doctor` | 环境体检：pi 版本、配置路径、内置 provider 数、`models.json` 结构/模型字段/凭据/默认模型校验、注册表是否陈旧 |
 | `pmh feedback [问题描述] [--print\|--open] [--json]` | 生成脱敏环境报告并打开预填的 GitHub Issue（不含 Key / 站点地址 / 模型名，不会自动提交） |
 
 常用参数：
 
+- `--reuse-key`：仅用于 `pmh add` 改站点地址时，明确确认继续使用原 Key（默认会拒绝，防止凭据被发往新站）
 - `--api openai-completions \| openai-responses \| anthropic-messages`（默认 `openai-completions`）
 - `--api-rule "正则=api"`，可重复。例如中转站同时挂 Claude 与 GPT：
   `--api-rule "^claude=anthropic-messages"`（此时 Claude 走 Anthropic 协议，其余走 OpenAI 协议）
@@ -298,6 +299,8 @@ pi 里也可以直接输入 `/feedback` 获取同样的入口。
   `--image` / `--text-only`、`--cost-in 3 --cost-out 15 [--cache-read 0.3 --cache-write 3.75]`、
   `--name 显示名`、`--override-only`、`--override`
 - `--agent-dir <dir>` / `--catalog <dir>` / `--proxy <url>` / `--dry-run` / `--verbose`
+
+退出码：成功为 `0`；`test` / `doctor` / `import` 发现失败项时返回 `1`，方便脚本与 CI 判断（`run` 透传 pi 的退出码）。
 
 ## 它到底改了什么
 

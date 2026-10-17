@@ -1,9 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 
-export const isTTY = process.stdout.isTTY && !process.env.NO_COLOR;
+export const isTTY = Boolean(process.stdout.isTTY);
+const useColor = isTTY && !process.env.NO_COLOR;
 
-const wrap = (code) => (s) => (isTTY ? `\u001b[${code}m${s}\u001b[0m` : String(s));
+const wrap = (code) => (s) => (useColor ? `\u001b[${code}m${s}\u001b[0m` : String(s));
 
 export const c = {
   bold: wrap("1"),
@@ -85,7 +86,9 @@ export function writeJson(file, value, { backup = true, mode } = {}) {
     }
   }
   const tmp = `${file}.tmp-${process.pid}`;
-  fs.writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  const writeOptions = { encoding: "utf8" };
+  if (effectiveMode !== undefined) writeOptions.mode = effectiveMode;
+  fs.writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`, writeOptions);
   if (effectiveMode !== undefined) fs.chmodSync(tmp, effectiveMode);
   fs.renameSync(tmp, file);
   return backupPath;

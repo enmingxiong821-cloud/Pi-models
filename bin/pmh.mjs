@@ -20,7 +20,7 @@ const lightContext = () => {
   return { agentDir, paths: configPaths(agentDir), flags };
 };
 
-const NETWORK_COMMANDS = new Set(["add", "setup", "init", "quick", "go", "local", "sync", "test", "import", "scan", "meta"]);
+const NETWORK_COMMANDS = new Set(["add", "setup", "init", "quick", "go", "local", "sync", "test", "import", "scan", "meta", "bootstrap"]);
 
 /**
  * Node 24 的 fetch 默认不读系统代理，需要 NODE_USE_ENV_PROXY=1，而该变量要在进程启动前生效，
