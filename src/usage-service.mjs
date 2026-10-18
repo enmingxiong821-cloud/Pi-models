@@ -258,7 +258,7 @@ async function readSessionFile(file, stat) {
     file,
     sessionId,
     cwd,
-    project: cwd ? path.basename(cwd) || cwd : null,
+    project: cwd ? baseName(cwd) || cwd : null,
     version: header?.version ?? null,
     records,
     activeIds,
@@ -273,14 +273,25 @@ async function readSessionFile(file, stat) {
   return parsed;
 }
 
+function baseName(value) {
+  const text = String(value).replace(/[\\/]+$/, "");
+  const index = Math.max(text.lastIndexOf("/"), text.lastIndexOf("\\"));
+  return index >= 0 ? text.slice(index + 1) : text;
+}
+
+function normalizeProjectPath(value) {
+  return String(value).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+}
+
 function projectMatches(parsed, filter) {
   if (!filter) return true;
   const wanted = String(filter).trim();
   if (!wanted) return true;
   if (parsed.project && parsed.project.toLowerCase() === wanted.toLowerCase()) return true;
   if (!parsed.cwd) return false;
+  if (normalizeProjectPath(parsed.cwd) === normalizeProjectPath(wanted)) return true;
   try {
-    return path.resolve(parsed.cwd).toLowerCase() === path.resolve(wanted).toLowerCase();
+    return normalizeProjectPath(path.resolve(parsed.cwd)) === normalizeProjectPath(path.resolve(wanted));
   } catch {
     return false;
   }
