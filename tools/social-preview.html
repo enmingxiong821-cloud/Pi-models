@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>pmh social preview</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1280px; height: 640px; overflow: hidden; }
+  body {
+    background: #0c0f14;
+    color: #e6e9ef;
+    font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .canvas {
+    position: relative;
+    width: 1280px;
+    height: 640px;
+    background:
+      radial-gradient(760px 420px at 78% 42%, rgba(122, 162, 255, 0.13), transparent 70%),
+      radial-gradient(520px 320px at 6% 96%, rgba(70, 190, 160, 0.07), transparent 72%),
+      #0c0f14;
+  }
+  .grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(122, 162, 255, 0.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(122, 162, 255, 0.045) 1px, transparent 1px);
+    background-size: 32px 32px;
+    mask-image: radial-gradient(900px 560px at 62% 46%, #000 20%, transparent 88%);
+  }
+  .left {
+    position: absolute;
+    left: 72px;
+    top: 62px;
+    width: 560px;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .mark {
+    width: 36px; height: 36px; border-radius: 11px;
+    background: linear-gradient(160deg, #8fb2ff, #5f8cf0);
+    display: grid; align-content: center; gap: 5px; justify-items: center;
+    box-shadow: 0 6px 22px rgba(95, 140, 240, 0.35);
+  }
+  .mark i { display: block; height: 3.5px; border-radius: 2px; background: #0a111e; }
+  .mark i:nth-child(1) { width: 18px; }
+  .mark i:nth-child(2) { width: 12px; opacity: .8; }
+  .wordmark { font-size: 27px; font-weight: 650; letter-spacing: -0.6px; }
+  .tag {
+    margin-left: 6px; padding: 4px 9px; border: 1px solid #2a303b; border-radius: 999px;
+    font: 500 12px/1 "Cascadia Code", Consolas, monospace; color: #8d97a6; letter-spacing: .3px;
+  }
+  h1 {
+    margin-top: 46px;
+    font-size: 60px;
+    line-height: 1.08;
+    font-weight: 650;
+    letter-spacing: -2px;
+    color: #f2f4f8;
+  }
+  h1 em { font-style: normal; color: #8fb2ff; }
+  .sub {
+    margin-top: 22px;
+    font-size: 20px;
+    line-height: 1.62;
+    color: #9aa4b2;
+    letter-spacing: .1px;
+  }
+  .sub strong { color: #d7dce5; font-weight: 500; }
+  .cmd {
+    margin-top: 30px;
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+    padding: 13px 18px 13px 16px;
+    border: 1px solid #2f3643;
+    border-radius: 10px;
+    background: linear-gradient(180deg, #171c24, #12161d);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.38);
+    font: 500 17px/1 "Cascadia Code", Consolas, monospace;
+    color: #d9e0ea;
+  }
+  .cmd b { color: #6f7b8c; font-weight: 400; }
+  .cmd span { color: #8fb2ff; }
+  .meta {
+    position: absolute;
+    left: 72px;
+    bottom: 52px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font: 500 13px/1 "Cascadia Code", Consolas, monospace;
+    color: #747f90;
+    letter-spacing: .4px;
+  }
+  .meta i {
+    width: 5px; height: 5px; border-radius: 50%; background: #3d4655;
+  }
+  .meta .live { color: #7fd6b4; }
+  .meta .live::before {
+    content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    background: #58c79c; margin-right: 8px; vertical-align: 1px;
+    box-shadow: 0 0 0 4px rgba(88, 199, 156, 0.12);
+  }
+  .window {
+    position: absolute;
+    left: 682px;
+    top: 74px;
+    width: 690px;
+    border-radius: 14px;
+    border: 1px solid #333b49;
+    background: #101318;
+    box-shadow:
+      0 40px 90px rgba(0, 0, 0, 0.6),
+      0 0 0 1px rgba(255, 255, 255, 0.03),
+      0 0 70px rgba(122, 162, 255, 0.08);
+    overflow: hidden;
+  }
+  .bar {
+    height: 38px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 0 14px;
+    background: #151a21;
+    border-bottom: 1px solid #262c36;
+  }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #39414f; }
+  .dot.r { background: #4a3a3d; }
+  .dot.y { background: #4a463a; }
+  .dot.g { background: #35493f; }
+  .bar span {
+    margin-left: 10px;
+    font: 500 11px/1 "Cascadia Code", Consolas, monospace;
+    color: #6e7888; letter-spacing: .3px;
+  }
+  .window img { display: block; width: 100%; height: auto; }
+  .float {
+    position: absolute;
+    left: 622px;
+    top: 492px;
+    padding: 11px 14px;
+    border: 1px solid #2f3a4c;
+    border-radius: 10px;
+    background: rgba(20, 25, 33, 0.94);
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.55);
+    font-size: 12.5px;
+    color: #aeb8c7;
+    line-height: 1.5;
+    backdrop-filter: blur(4px);
+  }
+  .float b { display: block; color: #e6e9ef; font-weight: 600; font-size: 13px; }
+  .float em { font-style: normal; color: #8fb2ff; }
+  .fade {
+    position: absolute;
+    top: 0; right: 0; bottom: 0;
+    width: 190px;
+    background: linear-gradient(90deg, rgba(12, 15, 20, 0), rgba(12, 15, 20, 0.88) 62%, #0c0f14);
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+  <div class="canvas">
+    <div class="grid"></div>
+
+    <div class="left">
+      <div class="brand">
+        <div class="mark"><i></i><i></i></div>
+        <div class="wordmark">pmh</div>
+        <div class="tag">pi model hub</div>
+      </div>
+
+      <h1>把中转站接进 <em>pi</em></h1>
+      <p class="sub">中转站、自建网关、OpenRouter、Ollama<br>一条命令接入，在 pi 里随时切换模型。</p>
+
+      <div class="cmd"><b>$</b><span>npm</span> i -g pmh-cli</div>
+    </div>
+
+    <div class="meta">
+      <span class="live">零运行时依赖</span>
+      <i></i><span>Windows</span>
+      <i></i><span>macOS</span>
+      <i></i><span>Linux</span>
+    </div>
+
+    <div class="window">
+      <div class="bar">
+        <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+        <span>pmh · 模型控制台</span>
+      </div>
+      <img src="../docs/images/screenshots/desktop-models.png" alt="">
+    </div>
+
+    <div class="float">
+      <b>自动路由 <em>· 按任务选档</em></b>
+      轻量 / 标准 / 强力，失败自动升档
+    </div>
+
+    <div class="fade"></div>
+  </div>
+</body>
+</html>

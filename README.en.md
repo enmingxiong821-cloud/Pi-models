@@ -237,6 +237,8 @@ pmh auto sync       # manual sync in copy mode (usually automatic on startup)
 
 Prefer a GUI for sites, models and thinking levels:
 
+![pmh desktop console: model list and detail](docs/images/screenshots/desktop-models.png)
+
 ```bash
 npm install            # first run only; installs Electron and the packager (dev dependencies)
 npm run desktop        # launch the app
@@ -269,6 +271,12 @@ Four tabs:
 | Sites | Create, edit and delete third-party sites; discover models; add/override/remove models; replace or clear the key |
 | Auto routing | Toggle, pin a tier, edit three tiers, thresholds, retry escalation, `useModelThinking` and project pins; validation results plus a task preview |
 | Usage | Aggregate session tokens, cache and cost for today / 7 / 30 days / all time; group by day, site, model or project and list unpriced models (read-only scan of `agent/sessions`) |
+
+| Sites and key management | Usage and cost |
+|---|---|
+| ![Site settings](docs/images/screenshots/desktop-sites.png) | ![Usage report](docs/images/screenshots/desktop-usage.png) |
+
+![Auto routing: tiers, project pins and task preview](docs/images/screenshots/desktop-auto.png)
 
 Safety boundaries:
 

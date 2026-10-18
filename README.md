@@ -241,6 +241,8 @@ pi 里对应 `/auto doctor` 与 `/auto sync`。
 
 不想记命令时，用图形界面管理站点、模型和推理等级：
 
+![pmh 桌面控制台：模型列表与详情](docs/images/screenshots/desktop-models.png)
+
 ```bash
 npm install            # 首次需要，会装 Electron 与打包工具（仅开发依赖）
 npm run desktop        # 启动桌面应用
@@ -272,6 +274,12 @@ CLI 仍是纯 Node，Windows 用 `install.ps1`，macOS / Linux 用 `install.sh`�
 | 站点 | 新建、编辑、删除第三方站点；探测模型；添加/覆盖/删除模型；替换或清除 Key |
 | 自动路由 | 启停、固定档、三档模型、两个阈值、重试升档、`useModelThinking`、项目级固定档；显示校验结果，并可输入任务做路由预览 |
 | 用量 | 按今日 / 7 天 / 30 天 / 全部聚合会话 token、缓存与费用；可按日、站点、模型、项目分组，并列出缺价模型（只读扫描 `agent/sessions`） |
+
+| 站点与 Key 管理 | 用量与费用 |
+|---|---|
+| ![站点设置](docs/images/screenshots/desktop-sites.png) | ![用量统计](docs/images/screenshots/desktop-usage.png) |
+
+![自动路由：档位、项目规则与分类预览](docs/images/screenshots/desktop-auto.png)
 
 安全边界：
 
