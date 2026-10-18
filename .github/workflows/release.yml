@@ -1,0 +1,101 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "已推送的 tag，例如 v0.7.0"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build / ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows
+            os: windows-latest
+            script: desktop:dist:win
+            artifacts: |
+              release/*.exe
+              release/*.blockmap
+          - name: macos
+            os: macos-latest
+            script: desktop:dist:mac
+            artifacts: |
+              release/*.dmg
+              release/*-mac-*.zip
+          - name: linux
+            os: ubuntu-latest
+            script: desktop:dist:linux
+            artifacts: |
+              release/*.AppImage
+              release/*.deb
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 全量自测
+        run: npm test
+
+      - name: 构建桌面端
+        run: npm run ${{ matrix.script }} -- --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pmh-${{ matrix.name }}
+          path: ${{ matrix.artifacts }}
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: publish release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: 创建 Release 并上传各平台产物
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "pmh $TAG" \
+              --notes "桌面端支持 Windows（安装版/便携版）、macOS（Intel/Apple 芯片）与 Linux（AppImage/deb）；CLI 使用 install.ps1 / install.sh 安装。"
+          fi
+          find dist -type f \( \
+            -name '*.exe' -o -name '*.blockmap' -o \
+            -name '*.dmg' -o -name '*.zip' -o \
+            -name '*.AppImage' -o -name '*.deb' \
+          \) -print0 | xargs -0 gh release upload "$TAG" --clobber --repo "$GITHUB_REPOSITORY"

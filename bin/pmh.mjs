@@ -3,16 +3,19 @@ import { spawnSync } from "node:child_process";
 import {
   cmdAdd, cmdAlias, cmdAuto, cmdBootstrap, cmdCurrent, cmdDoctor, cmdFav, cmdFeedback, cmdGroup, cmdImport, cmdInstallExtension, cmdKey, cmdLocal,
   cmdLs, cmdMeta, cmdModel, cmdPick, cmdQuick, cmdRecent, cmdRelay, cmdRm, cmdRun, cmdScope, cmdSync, cmdTest,
-  cmdUse, makeContext, printHelp,
+  cmdUsage, cmdUse, makeContext, printHelp,
 } from "../src/commands.mjs";
+import { cmdConsole } from "../src/console.mjs";
 import { completionCandidates, completionScript, detectShell } from "../src/completion.mjs";
 import { configPaths, resolveAgentDir } from "../src/paths.mjs";
+import { isInteractive } from "../src/prompt.mjs";
 import { fail, log, setJsonMode } from "../src/util.mjs";
 import { parseArgs } from "../src/args.mjs";
 
 const { flags, positional, rest } = parseArgs(process.argv.slice(2));
 setJsonMode(flags.json);
-const command = positional.shift() ?? (flags.help || flags.h ? "help" : "help");
+const bareInvocation = process.argv.length <= 2;
+const command = positional.shift() ?? (bareInvocation && isInteractive() ? "console" : "help");
 
 /** 只读配置路径的轻量上下文：不加载官方模型目录，适合补全/状态这类高频命令。 */
 const lightContext = () => {
@@ -129,6 +132,10 @@ try {
       cmdCurrent(lightContext(), flags);
       break;
     }
+    case "usage": {
+      await cmdUsage(lightContext(), flags);
+      break;
+    }
     case "completion": {
       log(completionScript(positional[0] ?? detectShell()));
       break;
@@ -172,6 +179,11 @@ try {
     case "install-extension":
     case "install-ext": {
       cmdInstallExtension(makeContext(flags), flags);
+      break;
+    }
+    case "console":
+    case "ui": {
+      await cmdConsole(makeContext(flags));
       break;
     }
     case "pick": {

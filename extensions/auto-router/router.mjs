@@ -14,6 +14,7 @@ export const TIER_LABELS = { cheap: "轻量", standard: "标准", strong: "强�
 export const AUTO_PROVIDER = "pmh";
 export const AUTO_MODEL = "auto";
 export const AUTO_EXTENSION_DIR = "pmh-auto";
+export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 
 export function agentDirFromEnv(env = process.env) {
   return env.PI_CODING_AGENT_DIR ? path.resolve(env.PI_CODING_AGENT_DIR) : path.join(os.homedir(), ".pi", "agent");
@@ -25,12 +26,14 @@ export function autoConfigPath(agentDir = agentDirFromEnv()) {
 
 export function defaultAutoConfig() {
   return {
-    version: 1,
+    version: 2,
     enabled: true,
     pinned: null,
     tiers: { cheap: null, standard: null, strong: null },
     thresholds: { cheap: 0.12, strong: 0.5 },
     upgradeOnRetry: true,
+    useModelThinking: false,
+    projects: {},
   };
 }
 
@@ -62,17 +65,42 @@ export function formatTierSpec(spec) {
   return spec?.provider && spec?.model ? `${spec.provider}#${spec.model}` : null;
 }
 
-/** 容错读取：坏字段回落到默认值，绝不让 pi 启动失败。 */
+const PROJECT_KEY_BAD = /[*?[\]{}]/;
+const UNSAFE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
+/** 项目规则：键为精确目录名或绝对路径，值可以是档位字符串或 { pinned }。 */
+function normalizeProjects(raw) {
+  const out = {};
+  if (!isObj(raw)) return out;
+  for (const [rawKey, entry] of Object.entries(raw)) {
+    const key = String(rawKey).trim();
+    if (!key || key.length > 260 || UNSAFE_KEYS.has(key)) continue;
+    if (PROJECT_KEY_BAD.test(key) || /[\u0000-\u001f\u007f]/.test(key)) continue;
+    let pinned = null;
+    if (typeof entry === "string") {
+      if (TIERS.includes(entry)) pinned = entry;
+    } else if (isObj(entry) && TIERS.includes(entry.pinned)) {
+      pinned = entry.pinned;
+    }
+    if (!pinned) continue;
+    out[key] = { pinned };
+  }
+  return out;
+}
+
+/** 容错读取：坏字段回落到默认值，绝不让 pi 启动失败。v1 配置读取后自动迁移为 v2。 */
 export function normalizeAutoConfig(raw = {}) {
   const base = defaultAutoConfig();
   if (!isObj(raw)) return base;
   const cfg = {
-    version: 1,
+    version: 2,
     enabled: typeof raw.enabled === "boolean" ? raw.enabled : base.enabled,
     pinned: TIERS.includes(raw.pinned) ? raw.pinned : null,
     tiers: { ...base.tiers },
     thresholds: { ...base.thresholds },
     upgradeOnRetry: typeof raw.upgradeOnRetry === "boolean" ? raw.upgradeOnRetry : base.upgradeOnRetry,
+    useModelThinking: typeof raw.useModelThinking === "boolean" ? raw.useModelThinking : base.useModelThinking,
+    projects: normalizeProjects(raw.projects),
   };
   for (const tier of TIERS) {
     const entry = raw.tiers?.[tier];
@@ -92,6 +120,45 @@ export function normalizeAutoConfig(raw = {}) {
   if (Number.isFinite(strong) && strong >= 0 && strong <= 1) cfg.thresholds.strong = strong;
   if (cfg.thresholds.cheap >= cfg.thresholds.strong) cfg.thresholds = { ...base.thresholds };
   return cfg;
+}
+
+/**
+ * 按目录匹配项目级固定档：先精确键，再绝对路径规范化，最后目录名。
+ * 不支持 glob 或正则，未命中返回 null。
+ */
+export function resolveProjectRule(config, projectPath) {
+  const raw = String(projectPath ?? "").trim();
+  if (!raw) return null;
+  const projects = isObj(config?.projects) ? config.projects : {};
+  const normalized = path.isAbsolute(raw) ? path.normalize(raw) : null;
+  const base = path.basename(raw.replace(/[\\/]+$/, ""));
+  const candidates = [raw];
+  if (normalized && normalized !== raw) candidates.push(normalized);
+  if (base && !candidates.includes(base)) candidates.push(base);
+  for (const key of candidates) {
+    const rule = projects[key];
+    if (rule?.pinned) return { key, pinned: rule.pinned };
+  }
+  if (normalized) {
+    const fold = (value) => (process.platform === "win32" ? value.toLowerCase() : value);
+    for (const [key, rule] of Object.entries(projects)) {
+      if (!path.isAbsolute(key) || !rule?.pinned) continue;
+      if (fold(path.normalize(key)) === fold(normalized)) return { key, pinned: rule.pinned };
+    }
+  }
+  return null;
+}
+
+/** 模型页配置的思考等级；没有配置或值非法时返回 null。 */
+export function readModelThinkingLevel(agentDir, provider, model) {
+  if (!provider || !model) return null;
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(agentDir, "settings.json"), "utf8"));
+    const value = raw?.modelThinkingLevels?.[`${provider}/${model}`];
+    return THINKING_LEVELS.includes(value) ? value : null;
+  } catch {
+    return null;
+  }
 }
 
 export function readAutoConfig(agentDir = agentDirFromEnv()) {

@@ -5,8 +5,8 @@ import { LOCAL_PRESETS } from "./native.mjs";
 
 const COMMANDS = [
   "add", "quick", "local", "model", "auto", "import", "scan", "sync", "key", "ls", "models", "current",
-  "group", "relay", "fav", "recent", "meta", "use", "switch", "scope", "test",
-  "run", "pick", "install-extension", "alias", "rm", "doctor", "completion", "help", "feedback", "bootstrap",
+  "usage", "group", "relay", "fav", "recent", "meta", "use", "switch", "scope", "test",
+  "run", "console", "ui", "pick", "install-extension", "alias", "rm", "doctor", "completion", "help", "feedback", "bootstrap",
 ];
 
 const FLAGS = [
@@ -20,6 +20,7 @@ const FLAGS = [
   "--cache-read", "--cache-write", "--override", "--override-only", "--port", "--image",
   "--text-only", "--reasoning", "--no-reasoning", "--local", "--copy", "--link", "--package",
   "--print", "--open", "--no-extension", "--no-config",
+  "--since", "--group-by", "--branch", "--project",
 ];
 
 const LOCAL_NAMES = Object.values(LOCAL_PRESETS).map((preset) => preset.id);
@@ -117,6 +118,11 @@ export function completionCandidates(ctx, { command = "", word = "" } = {}) {
       return filterByWord(["ls", "add", "rm", "toggle", ...switchables], cur);
     case "completion":
       return filterByWord(SHELLS, cur);
+    case "usage":
+      return filterByWord([
+        "today", "7d", "30d", "all", "day", "provider", "model", "project", "active",
+        "--since", "--group-by", "--branch", "--project", "--json",
+      ], cur);
     case "import":
     case "scan":
       return filterByWord(["--from", "--dry-run", "--yes", "--json", "clipboard", "claude", "codex", "ccswitch", "all"], cur);

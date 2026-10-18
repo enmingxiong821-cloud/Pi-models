@@ -422,7 +422,7 @@ try {
     assert.ok(useCands.includes("@fav"));
     assert.ok(useCands.includes("recent"));
     assert.ok(useCands.some((v) => v.startsWith("alpha#")), "应补全 provider#model");
-    assert.deepEqual(completionCandidates(c, { command: "", word: "us" }), ["use"]);
+    assert.deepEqual(completionCandidates(c, { command: "", word: "us" }), ["usage", "use"]);
     assert.deepEqual(completionCandidates(c, { command: "completion", word: "" }), SHELLS);
     assert.ok(completionCandidates(c, { command: "key", word: "--j" }).includes("--json"));
     for (const shell of SHELLS) assert.match(completionScript(shell), /__complete/);

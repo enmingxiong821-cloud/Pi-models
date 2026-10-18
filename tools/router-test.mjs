@@ -268,6 +268,29 @@ step("扩展：未配置档位时退回第一个可用模型并提醒", () => {
   writeAutoConfig(config, agentDir);
 });
 
+step("扩展：项目级固定档与 useModelThinking", () => {
+  const cwdKey = path.basename(process.cwd());
+  writeAutoConfig({
+    ...config,
+    pinned: null,
+    projects: { [cwdKey]: { pinned: "strong" } },
+  }, agentDir);
+  const routed = virtualModel.route(userRequest("把错别字改一下"), ctx);
+  assert.equal(routed.model, physical.strong);
+  assert.equal(routed.state.why, "项目固定档");
+
+  fs.writeFileSync(path.join(agentDir, "settings.json"), JSON.stringify({
+    modelThinkingLevels: { "demo/m-strong": "high" },
+  }));
+  writeAutoConfig({ ...config, useModelThinking: true }, agentDir);
+  const thinking = virtualModel.route(userRequest("把错别字改一下"), ctx);
+  assert.equal(thinking.model, physical.cheap);
+  assert.equal(thinking.thinkingLevel, "medium");
+  const strong = virtualModel.route(userRequest("重构整个项目的并发架构"), ctx);
+  assert.equal(strong.thinkingLevel, "high");
+  writeAutoConfig(config, agentDir);
+});
+
 step("扩展：/auto off 写配置，/auto explain 输出档位", async () => {
   notes.length = 0;
   await commands.get("auto").handler("explain 重构整个项目的并发处理", ctx);

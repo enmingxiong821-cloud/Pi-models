@@ -117,6 +117,9 @@ pmh run sonnet          # 直接以这个模型启动 pi
 
 已经开着的 pi 里直接 `/model` 搜索、或 `Ctrl+P` 循环切换即可，**不用重启**。
 
+想要常驻的全屏面板：`pmh console`（交互式终端里直接敲 `pmh` 也会打开）。
+列表支持搜索、收藏、分组和最近使用，`Enter` 设为默认，`f` 收藏；非 TTY 环境会提示改用 `pmh pick`。
+
 > 没跑安装脚本、也没有 `pmh` 命令时，把上面的 `pmh` 换成 `node bin/pmh.mjs` 即可。
 
 地址不必自己裁：`https://站/v1/chat/completions`、`…/v1/responses`、`…/v1/models`
@@ -198,6 +201,24 @@ pmh auto thresholds 0.12 0.5    # ≤0.12 → cheap，≥0.5 → strong，中间
 配置在 `~/.pi/agent/extension-settings/pmh-auto.json`，**不含任何密钥**；扩展每个请求都会重读，
 大多数改动不用重载 pi。三个档位都没配时不会报错，会退回当前可用模型并提示一次。
 
+### 项目级固定档与模型思考等级（v0.7）
+
+自动路由页可以直接编辑三档模型、两个阈值、重试升档与固定档，保存前会校验模型是否存在、
+阈值是否满足 `0 ≤ cheap < strong ≤ 1`，不会把 `pmh/auto` 自己设成档位。页面底部可输入一段
+任务描述做**路由预览**，看到分数、分类档位、实际档位与目标模型，不写盘、不切模型。
+
+- **项目级固定档**：按目录名或绝对路径把某个项目固定到某一档，例如 `pi-model → strong`。
+  目录名即工作目录的 basename；只做精确匹配，不支持 glob/正则，也不向父目录回溯。
+  未命中时回退全局固定档，再回退正常分类。
+- **useModelThinking**：打开后，路由选出物理模型，再用 `settings.json` 里该模型的
+  `modelThinkingLevels["provider/model"]` 覆盖本轮思考等级；没配或值非法时保留请求等级。
+  它与 pi 的 `--model pmh/auto:high` 冲突：显式写在档位名后的等级会被模型页配置覆盖，
+  想临时指定等级时请关掉该开关。
+
+```bash
+pmh auto status --json   # 含 useModelThinking 与 projects，便于脚本核对
+```
+
 ### pi 升级后会自动适配
 
 `pmh` 不改 pi 本体，只通过 pi 的扩展/包机制接入。每次启动会话时扩展会对比
@@ -215,6 +236,48 @@ pmh auto sync       # 复制模式下手动同步（一般用不到，启动时�
 ```
 
 pi 里对应 `/auto doctor` 与 `/auto sync`。
+
+## 桌面应用
+
+不想记命令时，用图形界面管理站点、模型和推理等级：
+
+```bash
+npm install            # 首次需要，会装 Electron 与打包工具（仅开发依赖）
+npm run desktop        # 启动桌面应用
+npm run desktop:dist:win     # Windows：安装包 + 便携版
+npm run desktop:dist:mac     # macOS：dmg + zip（Intel / Apple 芯片）
+npm run desktop:dist:linux   # Linux：AppImage + deb
+```
+
+打包命令要在对应系统上运行；正式 Release 由 GitHub Actions 在 Windows / macOS / Linux
+三台构建机上分别产出，避免交叉构建带来的签名与运行库问题。
+
+### 直接下载
+
+| 系统 | 文件 |
+|---|---|
+| Windows 10/11 x64 | `pmh-<版本>-setup-x64.exe`、`pmh-<版本>-portable-x64.exe` |
+| macOS Intel | `pmh-<版本>-mac-x64.dmg` / `.zip` |
+| macOS Apple 芯片 | `pmh-<版本>-mac-arm64.dmg` / `.zip` |
+| Linux x64 | `pmh-<版本>-linux-<arch>.AppImage` / `.deb` |
+
+桌面端未做代码签名：macOS 首次打开请右键 → 打开；Linux 的 AppImage 需要先 `chmod +x`。
+CLI 仍是纯 Node，Windows 用 `install.ps1`，macOS / Linux 用 `install.sh`。
+
+四个页签：
+
+| 页签 | 能做什么 |
+|---|---|
+| 模型 | 搜索、收藏、按站点/最近筛选；双击切换；详情里调「思考等级」（继承全局 / off…max）并查看成本等级 |
+| 站点 | 新建、编辑、删除第三方站点；探测模型；添加/覆盖/删除模型；替换或清除 Key |
+| 自动路由 | 启停、固定档、三档模型、两个阈值、重试升档、`useModelThinking`、项目级固定档；显示校验结果，并可输入任务做路由预览 |
+| 用量 | 按今日 / 7 天 / 30 天 / 全部聚合会话 token、缓存与费用；可按日、站点、模型、项目分组，并列出缺价模型（只读扫描 `agent/sessions`） |
+
+安全边界：
+
+- Key 只写进 `~/.pi/agent/auth.json`（`0600`，不生成含明文的备份），界面只显示「已配置 · 来源 · 别名」，不回显明文。
+- 删除站点或模型必须输入原文（站点 id 或 `provider#model`）确认，服务端会再校验一次。
+- 渲染进程关闭 `nodeIntegration`、启用 `contextIsolation` + `sandbox`，只通过白名单 IPC 访问服务层。
 
 ## 命令补全（终端里少打字）
 
@@ -253,7 +316,7 @@ pi 里也可以直接输入 `/feedback` 获取同样的入口。
 | `pmh model add <provider> <模型id> [--ctx 200k] [--max-output 64k] [--reasoning] [--image] [--cost-in 3 --cost-out 15]` | 在任意 provider（含 pi 内置）下新增/替换一个模型，元数据自动补全 |
 | `pmh model override <provider> <模型id> [...同上]` | 只改内置/已有模型的元数据（写 `modelOverrides`），不碰 `api` / `baseUrl` |
 | `pmh model rm <provider> <模型id> [--override-only]` | 删除模型条目或它的 override；provider 没有其他内容时会整条清理（避免 pi 报空 provider） |
-| `pmh auto status [--json]` | 自动选模型配置：开关、三档模型、阈值、配置文件路径 |
+| `pmh auto status [--json]` | 自动选模型配置：开关、三档模型、阈值、项目固定档、`useModelThinking`、配置文件路径 |
 | `pmh auto set <cheap\|standard\|strong> <provider#model>` | 配置档位；也可一次写多组：`auto set cheap=crow5#mini strong=crow5#opus` |
 | `pmh auto on\|off` / `unset <档>` / `pin <档\|off>` / `thresholds <cheap> <strong>` | 开关、清空档位、临时固定档位、调整升降档阈值 |
 | `pmh auto explain <任务描述> [--json]` | 预览这轮会被分到哪档、用哪个模型（不切模型） |
@@ -265,6 +328,7 @@ pi 里也可以直接输入 `/feedback` 获取同样的入口。
 | `pmh key ls\|add\|use\|rm` | 多 Key 别名：`key add crow5 backup sk-…`、`key use crow5 backup`、`key ls crow5`（打码） |
 | `pmh ls [--models] [--group <组>] [--json]` | 看已配置的 provider、凭据来源、默认模型 |
 | `pmh current [--json] [--format 模板]` | 当前默认模型一行摘要（纯本地；`--format '{{provider}}/{{model}}'` 自定义输出，别名 `status`） |
+| `pmh usage [--since today\|7d\|30d\|YYYY-MM-DD\|all] [--group-by day\|provider\|model\|project] [--branch all\|active] [--project 名] [--json]` | 只读统计 pi 会话的 token、缓存与费用；默认包含放弃的分支，`--branch active` 只看当前活动分支 |
 | `pmh use [名称[#模型] \| 关键词 \| @组 [关键词] \| @fav \| recent]` | 设为默认；留空打开方向键选择器；`-` 切回上一个默认（CLI 历史） |
 | `pmh group ls\|add <名> [--title 显示名]\|rm <名>` | 分组管理（`group add code --title 写代码`） |
 | `pmh relay group <名称> <组\|->` | 把站放进/移出分组 |
@@ -275,6 +339,7 @@ pi 里也可以直接输入 `/feedback` 获取同样的入口。
 | `pmh test <名称> [--model id] [--no-chat]` | 体检：`/v1/models` + 真实最小请求 |
 | `pmh run [名称[#模型] \| 关键词 \| @组 [关键词]] [-- <传给 pi 的参数>]` | 以指定模型启动 pi；留空先选 |
 | `pmh pick [--run] [--filter @组]` | `↑↓` 方向键选择器，输入即过滤（可顺手启动 pi） |
+| `pmh console`（别名 `ui`） | 全屏模型控制台：搜索、收藏、分组/最近筛选、查看详情并切换默认；交互式终端里裸 `pmh` 也会打开 |
 | `pmh install-extension [--copy\|--link]` | 装 quick-switch 与 auto-router 扩展；`--link` 推荐（pi 包模式，随仓库更新） |
 | `pmh bootstrap [地址] [--copy] [--no-extension] [--no-config]` | 一键初始化：装扩展 + 配置中转站 + 选默认模型（安装脚本最后调用的就是它） |
 | `pmh completion [powershell\|bash\|zsh\|fish]` | 输出 shell 补全脚本；不带参数时按 `$SHELL`/平台自动识别 |
@@ -314,7 +379,7 @@ pi 里也可以直接输入 `/feedback` 获取同样的入口。
 | `auth.json` | `{ "<名称>": { "type": "api_key", "key": "..." }, "<名称>@<别名>": {...} }` |
 | `settings.json` | `defaultProvider` / `defaultModel` / `defaultThinkingLevel` / `enabledModels` |
 | `pmh-relays.json` | 只存运维元数据：分组、标签、收藏、MRU、Key 别名、元数据来源；**不含任何密钥** |
-| `extension-settings/pmh-auto.json` | 自动选模型的开关、三档模型、阈值、固定档位；**不含任何密钥** |
+| `extension-settings/pmh-auto.json` | 自动选模型的开关、三档模型、阈值、固定档位、项目级固定档、`useModelThinking`（v2）；**不含任何密钥** |
 
 每次写入前都会生成 `*.bak-<时间戳>` 备份，随时可以手工回滚（MRU 这类高频写入除外）。
 密钥默认只进 `auth.json`，与 pi 自身的凭据存储一致（也可以用 `--key-in models` 改到 `models.json`）。

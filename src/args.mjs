@@ -5,10 +5,10 @@ const REPEATABLE = new Set(["apiRule", "file", "from", "tag"]);
 
 /** 需要取值的参数；其余长参数一律按布尔开关处理，避免吞掉后面的位置参数。 */
 const VALUE_FLAGS = new Set([
-  "agentDir", "api", "apiRule", "as", "base", "baseUrl", "cacheRead", "cacheWrite", "catalog",
+  "agentDir", "api", "apiRule", "as", "base", "baseUrl", "branch", "cacheRead", "cacheWrite", "catalog",
   "cost", "costIn", "costMultiplier", "costOut", "ctx", "displayName", "file", "filter", "format",
-  "from", "group", "key", "keyCmd", "keyEnv", "keyIn", "keyRef", "limit", "local", "maxOutput",
-  "model", "modelsFile", "name", "proxy", "shell", "source", "tag", "thinking", "title",
+  "from", "group", "groupBy", "key", "keyCmd", "keyEnv", "keyIn", "keyRef", "limit", "local", "maxOutput",
+  "model", "modelsFile", "name", "project", "proxy", "shell", "since", "source", "tag", "thinking", "title",
 ]);
 
 export function parseArgs(argv) {

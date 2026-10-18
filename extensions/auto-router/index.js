@@ -19,6 +19,8 @@ import {
   bumpTier,
   classifyTask,
   readAutoConfig,
+  readModelThinkingLevel,
+  resolveProjectRule,
   writeAutoConfig,
 } from "./router.mjs";
 import {
@@ -213,6 +215,14 @@ export default function (pi) {
       const thinkingLevel = request.thinkingLevel ?? "medium";
       const state = request.state && typeof request.state === "object" ? request.state : {};
       const previous = request.previous?.model;
+      const projectRule = resolveProjectRule(config, process.cwd());
+      const pinned = projectRule?.pinned ?? config.pinned;
+      const pinSource = projectRule ? "project" : config.pinned ? "global" : null;
+      const agentDir = piAgentDir();
+      // 模型页配置的思考等级优先于请求等级；读不到时保持请求等级。
+      const thinkingFor = (model, level) => (config.useModelThinking
+        ? readModelThinkingLevel(agentDir, model?.provider, model?.id) ?? level
+        : level);
 
       // 工具调用 / 扩展消息：完全沿用上一轮的物理模型，保住 prompt cache。
       if (request.reason === "continuation" && previous) {
@@ -233,28 +243,32 @@ export default function (pi) {
               notify(ctx, `重试失败，升档到${TIER_LABELS[picked.tier]}：${modelLabel(picked.model)}`, "warning");
               return {
                 model: picked.model,
-                thinkingLevel: request.failed?.thinkingLevel ?? thinkingLevel,
+                thinkingLevel: thinkingFor(picked.model, request.failed?.thinkingLevel ?? thinkingLevel),
                 state: { ...state, tier: picked.tier, escalated: true, why: "失败重试升档" },
               };
             }
           }
         }
         if (failed && hasAuth(ctx, failed)) {
-          return { model: failed, thinkingLevel: request.failed?.thinkingLevel ?? thinkingLevel, state };
+          return {
+            model: failed,
+            thinkingLevel: thinkingFor(failed, request.failed?.thinkingLevel ?? thinkingLevel),
+            state,
+          };
         }
-        const picked = pickTier(ctx, config, state.tier ?? (config.pinned ?? "standard"));
+        const picked = pickTier(ctx, config, state.tier ?? (pinned ?? "standard"));
         if (!picked) failNoModel();
-        return { model: picked.model, thinkingLevel, state };
+        return { model: picked.model, thinkingLevel: thinkingFor(picked.model, thinkingLevel), state };
       }
 
       // 压缩摘要、扩展发起的旁路请求：用便宜档省 token，但不要改变会话状态。
       if (request.reason === "direct") {
-        const tier = config.enabled ? "cheap" : (config.pinned ?? "standard");
+        const tier = config.enabled ? "cheap" : (pinned ?? "standard");
         const picked = pickTier(ctx, config, tier)
           ?? (previous && hasAuth(ctx, previous) ? { model: previous, tier } : null);
-        if (picked) return { model: picked.model, thinkingLevel };
+        if (picked) return { model: picked.model, thinkingLevel: thinkingFor(picked.model, thinkingLevel) };
         const fallback = firstAvailable(ctx);
-        if (fallback) return { model: fallback, thinkingLevel };
+        if (fallback) return { model: fallback, thinkingLevel: thinkingFor(fallback, thinkingLevel) };
         return failNoModel();
       }
 
@@ -262,11 +276,11 @@ export default function (pi) {
       let tier;
       let reasons;
       if (!config.enabled) {
-        tier = config.pinned ?? "standard";
+        tier = pinned ?? "standard";
         reasons = ["自动路由已关闭"];
-      } else if (config.pinned) {
-        tier = config.pinned;
-        reasons = ["固定档位"];
+      } else if (pinned) {
+        tier = pinned;
+        reasons = [pinSource === "project" ? "项目固定档" : "固定档位"];
       } else {
         const result = classifyTask(lastUserText(request.messages));
         tier = result.tier;
@@ -277,15 +291,19 @@ export default function (pi) {
       if (!picked) {
         // 没配任何档位时，至少别让会话直接报错：退回上一轮模型或第一个可用模型。
         if (previous && hasAuth(ctx, previous)) {
-          return { model: previous, thinkingLevel };
+          return { model: previous, thinkingLevel: thinkingFor(previous, thinkingLevel) };
         }
         const fallback = firstAvailable(ctx);
         if (fallback) {
           if (!state.warned) {
             notify(ctx, "pmh auto 还没配置档位，暂时使用第一个可用模型。运行 pmh auto set 配置。", "warning");
-            return { model: fallback, thinkingLevel, state: { ...state, warned: true } };
+            return {
+              model: fallback,
+              thinkingLevel: thinkingFor(fallback, thinkingLevel),
+              state: { ...state, warned: true },
+            };
           }
-          return { model: fallback, thinkingLevel };
+          return { model: fallback, thinkingLevel: thinkingFor(fallback, thinkingLevel) };
         }
         return failNoModel();
       }
@@ -299,14 +317,14 @@ export default function (pi) {
         ? { ...state, tier: picked.tier, escalated: false, why: reasons?.join("，") ?? "" }
         : state;
 
-      if (changed && config.enabled && !config.pinned) {
+      if (changed && config.enabled && !pinned) {
         const why = reasons?.length ? `（${reasons.slice(0, 3).join("，")}）` : "";
         notify(ctx, `自动选模型：${TIER_LABELS[picked.tier]} · ${modelLabel(picked.model)}${why}`);
       }
 
       return {
         model: sameModel ? previous : picked.model,
-        thinkingLevel,
+        thinkingLevel: thinkingFor(picked.model, thinkingLevel),
         state: nextState,
       };
     },
@@ -315,13 +333,20 @@ export default function (pi) {
   const usage = "用法：/auto status | on | off | pin <cheap|standard|strong|off> | explain <任务> | doctor | sync";
 
   const statusText = (ctx, config) => {
-    const lines = [
-      `pmh/auto：${config.enabled ? "已开启" : "已关闭（固定 standard）"}${config.pinned ? ` · 固定 ${config.pinned}` : ""}`,
-    ];
+    const projectRule = resolveProjectRule(config, process.cwd());
+    const mode = config.enabled ? "已开启" : `已关闭（固定 ${config.pinned ?? "standard"}）`;
+    const projectNote = projectRule
+      ? ` · 项目固定 ${projectRule.pinned}（${projectRule.key}）`
+      : config.pinned ? ` · 固定 ${config.pinned}` : "";
+    const lines = [`pmh/auto：${mode}${projectNote}`];
     for (const tier of TIERS) {
       const spec = config.tiers[tier];
       const mark = tier === "cheap" ? "轻量" : tier === "strong" ? "强力" : "标准";
       lines.push(`${mark} ${tier}: ${spec ? `${spec.provider}#${spec.model}` : "未配置"}`);
+    }
+    if (config.useModelThinking) lines.push("思考等级：以模型页配置为准（useModelThinking）");
+    if (Object.keys(config.projects ?? {}).length) {
+      lines.push(`项目级固定档：${Object.keys(config.projects).length} 条`);
     }
     const current = ctx.model;
     if (current) lines.push(`当前选择：${current.provider}/${current.id}`);

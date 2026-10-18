@@ -18,6 +18,7 @@ export function configPaths(agentDir) {
     modelsStore: path.join(agentDir, "models-store.json"),
     extensionSettings: path.join(agentDir, "extension-settings", "provider-newapi.json"),
     registry: path.join(agentDir, "pmh-relays.json"),
+    sessions: path.join(agentDir, "sessions"),
   };
 }
 

@@ -22,6 +22,7 @@ import {
   recordUse, removeFavorite, removeGroup, removeRelay, saveRegistry, setRelayGroup, takeDefaultHistory, toggleFavorite,
 } from "./registry.mjs";
 import { c, fail, heading, info, log, ok, readJson, rootOf, table, truncate, warn, writeJson } from "./util.mjs";
+import { collectUsage } from "./usage-service.mjs";
 
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
 
@@ -38,23 +39,23 @@ function plainMap(value) {
     : Object.create(null);
 }
 
-function loadModels(ctx) {
+export function loadModels(ctx) {
   const raw = readJson(ctx.paths.models, { providers: {} });
   const data = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
   data.providers = plainMap(data.providers);
   return data;
 }
 
-function loadAuth(ctx) {
+export function loadAuth(ctx) {
   return plainMap(readJson(ctx.paths.auth, {}) ?? {});
 }
 
-function loadSettings(ctx) {
+export function loadSettings(ctx) {
   return readJson(ctx.paths.settings, {}) ?? {};
 }
 
 /** 读注册表并对齐 models/auth；返回的 models/auth 与注册表同一次快照。 */
-function loadRegistryState(ctx, { models, auth } = {}) {
+export function loadRegistryState(ctx, { models, auth } = {}) {
   const m = models ?? loadModels(ctx);
   const a = auth ?? loadAuth(ctx);
   return { ...loadRegistry(ctx, { models: m, auth: a }), models: m, auth: a };
@@ -108,12 +109,12 @@ function recordSyncMeta(ctx, id, report) {
   saveRegistry(ctx, registry, { backup: false });
 }
 
-function credentialOf(ctx, providerId) {
-  const auth = loadAuth(ctx);
-  const entry = auth[providerId];
+export function credentialOf(ctx, providerId, { models, auth } = {}) {
+  const authData = auth ?? loadAuth(ctx);
+  const entry = authData[providerId];
   if (entry?.key) return { kind: entry.type === "api_key" || !entry.type ? "auth.json" : entry.type, value: entry.key };
-  const models = loadModels(ctx);
-  const apiKey = Object.hasOwn(models.providers, providerId) ? models.providers[providerId]?.apiKey : null;
+  const modelsData = models ?? loadModels(ctx);
+  const apiKey = Object.hasOwn(modelsData.providers, providerId) ? modelsData.providers[providerId]?.apiKey : null;
   if (apiKey) {
     const env = /^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$/.exec(apiKey);
     if (env) return process.env[env[1]] ? { kind: `env:${env[1]}`, value: process.env[env[1]] } : { kind: `env:${env[1]}（未设置）`, value: null };
@@ -176,7 +177,7 @@ function resolveModelApi(modelId, providerApi, rules) {
   return providerApi;
 }
 
-function normalizeProviderName(name) {
+export function normalizeProviderName(name) {
   const id = String(name ?? "").trim();
   if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(id)) {
     throw new Error(`provider 名称只能用字母/数字/._- 且以字母数字开头，收到: "${name}"`);
@@ -291,7 +292,7 @@ export async function cmdQuick(ctx, urlArg, keyArg, flags) {
   else info(`已保存 ${name}，随时可以 pmh use ${name}#<模型> 切换`);
 }
 
-function buildModelList(ids, {
+export function buildModelList(ids, {
   ctx, providerApi, providerBaseUrl, rules, costMode, costMultiplier,
   previous = {}, upstreamItems = [], ratioConfig = null, noReasoningCompat = false,
   refreshMeta = false, promptCache = false,
@@ -730,7 +731,7 @@ function modelList(ctx, providerArg, flags = {}) {
   info("查看某个 provider 的模型：pmh model ls <provider>");
 }
 
-function modelPatch(flags, { partialCost = false } = {}) {
+export function modelPatch(flags, { partialCost = false } = {}) {
   const patch = {};
   if (flags.name !== undefined) patch.name = String(flags.name);
   if (flags.ctx !== undefined) patch.contextWindow = parseCount(flags.ctx, "--ctx");
@@ -1062,11 +1063,11 @@ const PICK_LABEL = (e) =>
   }${e.reasoning ? c.dim("  思考") : ""}`;
 
 /** 选择器排序：收藏 > 最近使用 > 其余（字母序）。 */
-function orderEntries(ctx, entries) {
-  const { registry } = loadRegistryState(ctx);
+export function orderEntries(ctx, entries, { registry } = {}) {
+  const reg = registry ?? loadRegistryState(ctx).registry;
   const fav = new Set();
   const recent = new Map();
-  for (const relay of Object.values(registry.relays)) {
+  for (const relay of Object.values(reg.relays)) {
     for (const m of relay.favorites) fav.add(`${relay.id}#${m}`);
     for (const [i, e] of (relay.mru ?? []).entries()) recent.set(`${relay.id}#${e.model}`, i);
   }
@@ -1554,7 +1555,7 @@ export function cmdLs(ctx, flags = {}) {
   }
 }
 
-function formatContext(n) {
+export function formatContext(n) {
   const value = Number(n);
   if (!Number.isFinite(value) || value <= 0) return null;
   return value >= 1000 ? `${Math.round(value / 1000)}K` : String(value);
@@ -1651,19 +1652,77 @@ export function cmdCurrent(ctx, flags = {}) {
   if (models.providers?.[provider]?.baseUrl) log(c.dim(models.providers[provider].baseUrl));
 }
 
+function formatTokens(value) {
+  return Number(value || 0).toLocaleString("en-US");
+}
+
+function formatCost(value) {
+  const number = Number(value) || 0;
+  if (number > 0 && number < 0.01) return `$${number.toFixed(6)}`;
+  return `$${number.toFixed(2)}`;
+}
+
+export async function cmdUsage(ctx, flags = {}) {
+  const report = await collectUsage(ctx, {
+    since: flags.since ?? "7d",
+    groupBy: flags.groupBy ?? "day",
+    branch: flags.branch ?? "all",
+    project: flags.project ?? null,
+  });
+  if (flags.json) {
+    log(JSON.stringify(report, null, 2));
+    return;
+  }
+
+  const { totals, scan, range } = report;
+  heading("会话用量");
+  info(`范围 ${range.from ?? "全部"} → ${range.to} · 分支 ${scan.branch === "all" ? "全部分支" : "仅活动分支"} · ${range.timezone}`);
+  if (!report.groups.length) {
+    log(c.dim("没有找到会话记录。用量来自 pi 的 agent/sessions 目录，只读扫描，不会上传。"));
+    return;
+  }
+
+  const labels = { day: "日期", provider: "站点", model: "模型", project: "项目" };
+  const headers = [labels[flags.groupBy ?? "day"] ?? "分组", "输入", "输出", "缓存读", "缓存写", "合计", "费用"];
+  const rows = report.groups.map((group) => [
+    truncate(group.label, 42),
+    formatTokens(group.input),
+    formatTokens(group.output),
+    formatTokens(group.cacheRead),
+    formatTokens(group.cacheWrite),
+    formatTokens(group.tokens),
+    formatCost(group.cost),
+  ]);
+  log("");
+  log(table(rows, headers));
+  log("");
+  log(`${c.bold("合计")}  ${formatTokens(totals.totalTokens)} token  ·  输入 ${formatTokens(totals.input)}  ·  输出 ${formatTokens(totals.output)}  ·  缓存读 ${formatTokens(totals.cacheRead)}  ·  缓存写 ${formatTokens(totals.cacheWrite)}  ·  费用 ${formatCost(totals.cost)}`);
+  if (totals.reasoning) log(c.dim(`推理 token ${formatTokens(totals.reasoning)}（单独统计，不计入合计）`));
+
+  if (report.missingPrice.length) {
+    const names = report.missingPrice.slice(0, 5).map((row) => `${row.key}（${formatTokens(row.tokens)} token）`).join("、");
+    warn(`${report.missingPrice.length} 个模型缺少价格，共 ${formatTokens(totals.unknownCostTokens)} token 未计入费用：${names}${report.missingPrice.length > 5 ? " 等" : ""}`);
+    warn("可在 models.json 给模型补 cost，或运行 pmh model override <provider> <模型> --cost-in ... --cost-out ...");
+  }
+
+  const skipped = scan.skipped ? ` · 跳过 ${scan.skipped} 个文件` : "";
+  info(`扫描 ${scan.files} 个会话文件 / ${scan.sessions} 个会话${skipped}${scan.errors ? ` · ${scan.errors} 行解析失败` : ""}`);
+  if (scan.truncated) warn("会话较多，本次结果已截断（上限 5000 文件 / 512 MB / 8 秒）；可缩小 --since 范围后重试。");
+}
+
 /** 所有已配置的 provider/model 条目，用于模糊匹配与选择器。 */
-function allEntries(ctx) {
-  const models = loadModels(ctx);
+export function allEntries(ctx, { models, auth } = {}) {
+  const modelsData = models ?? loadModels(ctx);
   const out = [];
-  for (const [provider, p] of Object.entries(models.providers)) {
+  for (const [provider, p] of Object.entries(modelsData.providers)) {
     for (const m of p.models ?? []) {
       out.push({ provider, model: m.id, name: m.name ?? m.id, contextWindow: m.contextWindow, reasoning: m.reasoning });
     }
   }
-  const auth = loadAuth(ctx);
-  for (const provider of Object.keys(models.providers)) {
+  const authData = auth ?? loadAuth(ctx);
+  for (const provider of Object.keys(modelsData.providers)) {
     if (!out.some((e) => e.provider === provider)) {
-      out.push({ provider, model: null, name: auth[provider] ? "(已配密钥，等待同步模型)" : "（尚未配密钥）" });
+      out.push({ provider, model: null, name: authData[provider] ? "(已配密钥，等待同步模型)" : "（尚未配密钥）" });
     }
   }
   return out;
@@ -1713,7 +1772,7 @@ function assertConfiguredModel(ctx, provider, model, { force = false } = {}) {
   );
 }
 
-export async function cmdUse(ctx, target, flags) {
+export async function cmdUse(ctx, target, flags = {}) {
   if (String(target ?? "").trim() === "-") {
     const { registry, models, auth } = loadRegistryState(ctx);
     const settings = loadSettings(ctx);
@@ -1814,12 +1873,15 @@ export async function cmdUse(ctx, target, flags) {
   } catch {
     /* 注册表异常不影响切换 */
   }
-  ok(
-    `默认模型已设为 ${c.bold(`${settings.defaultProvider ?? "?"}${settings.defaultModel ? `/${settings.defaultModel}` : ""}`)}` +
-      `${flags.thinking ? `，思考级别 ${flags.thinking}` : ""}${backup ? `（备份：${path.basename(backup)}）` : ""}`,
-  );
-  reportAlternatives(resolved, `${provider}/${model}`);
-  info("已开着的 pi 会话里按 Ctrl+P 或 /model 也能立即切；下次启动默认用这个。pmh use - 可切回上一个。");
+  if (!flags.quiet) {
+    ok(
+      `默认模型已设为 ${c.bold(`${settings.defaultProvider ?? "?"}${settings.defaultModel ? `/${settings.defaultModel}` : ""}`)}` +
+        `${flags.thinking ? `，思考级别 ${flags.thinking}` : ""}${backup ? `（备份：${path.basename(backup)}）` : ""}`,
+    );
+    reportAlternatives(resolved, `${provider}/${model}`);
+    info("已开着的 pi 会话里按 Ctrl+P 或 /model 也能立即切；下次启动默认用这个。pmh use - 可切回上一个。");
+  }
+  return { provider: settings.defaultProvider ?? null, model: settings.defaultModel ?? null, backup };
 }
 
 export function cmdScope(ctx, patterns, flags) {
@@ -2119,6 +2181,8 @@ export function cmdAuto(ctx, args, flags = {}) {
       tiers: config.tiers,
       thresholds: config.thresholds,
       upgradeOnRetry: config.upgradeOnRetry,
+      useModelThinking: config.useModelThinking,
+      projects: config.projects,
       path: autoConfigPath(ctx.agentDir),
       pi: { version: compat.version, known: compat.known, apis: compat.apis, missing: compat.missing },
       extension: { mode, repoRoot: sourceRoot, repoAvailable: repoOk, stale },
@@ -2131,6 +2195,11 @@ export function cmdAuto(ctx, args, flags = {}) {
       log(`  ${TIER_LABELS[tier]} ${tier.padEnd(8)}  ${spec ? formatTierSpec(spec) : c.yellow("未配置")}`);
     }
     log(`  阈值        cheap <= ${config.thresholds.cheap} · strong >= ${config.thresholds.strong} · 失败重试升档 ${config.upgradeOnRetry ? "开" : "关"}`);
+    if (config.useModelThinking) log(`  思考等级    使用模型页配置（modelThinkingLevels），覆盖请求等级`);
+    const projectKeys = Object.keys(config.projects ?? {});
+    if (projectKeys.length) {
+      log(`  项目固定    ${projectKeys.map((key) => `${key} → ${config.projects[key].pinned}`).join(" · ")}`);
+    }
     log(`  配置文件    ${autoConfigPath(ctx.agentDir)}`);
     log(`  pi 版本     ${compat.version ?? c.yellow("未检测到（非 managed install）")}${compat.known ? `（扩展 API ${compat.missing.length ? c.red(`缺少 ${compat.missing.join(", ")}`) : c.green("正常")}）` : "（类型声明不可读，按旧版处理）"}`);
     log(`  扩展安装    ${mode === "package" ? c.green("pi 包模式，随仓库实时更新") : mode === "copy" ? `复制模式${stale.length ? c.yellow(`（${stale.length} 个文件待同步，运行 pmh auto sync）`) : "，已是最新"}` : c.yellow("未安装")}`);
@@ -2635,6 +2704,9 @@ ${c.bold("命令")}
   models [名称]                 只看模型清单（等价 ls --models）
   current [--json] [--format 模板]  当前默认模型一行摘要（纯本地；别名 status）
                                 模板变量：{{provider}} {{model}} {{thinking}} {{key}} {{group}} {{ctx}} {{source}}
+  usage [--since today|7d|30d|YYYY-MM-DD|all] [--group-by day|provider|model|project]
+             [--branch all|active] [--project 项目] [--json]
+                                会话 token、缓存与费用统计（只读扫描 agent/sessions）
   group ls | add <名> [--title 显示名] | rm <名>
   relay group <relay> <分组|->  设置站点所属分组
   fav [add|rm] <relay>#<模型>   收藏 / 取消收藏；不带子命令即切换
@@ -2648,6 +2720,7 @@ ${c.bold("命令")}
   scope [pattern...] [--clear]  限制 Ctrl+P 循环范围
   test <名称> [--model id] [--no-chat] [--verbose]
   run [名称[#模型] | 关键词 | @组 关键词 | @组 | @fav] [-- <传给 pi 的参数>]
+  console                       全屏模型控制台：搜索、收藏、查看详情、切换默认（别名 ui）
   pick [@组|@fav|recent[:N]] [--run]   ↑↓ 方向键选择器（可顺手启动 pi）
   install-extension [--copy|--link]  安装 /switch 与 /auto 扩展；--link 推荐（pi 包模式，随仓库实时更新）
   completion [powershell|bash|zsh|fish]   输出 shell 补全脚本（不带参数则自动识别）

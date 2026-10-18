@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>pmh</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="brand"><span class="logo" aria-hidden="true"></span><span>pmh</span></div>
+      <nav class="tabs" id="tabs" aria-label="功能页">
+        <button type="button" class="tab" data-tab="models">模型</button>
+        <button type="button" class="tab" data-tab="sites">站点</button>
+        <button type="button" class="tab" data-tab="auto">自动路由</button>
+        <button type="button" class="tab" data-tab="usage">用量</button>
+      </nav>
+      <div class="current" id="current">正在读取配置…</div>
+      <div class="actions">
+        <button type="button" id="refresh" class="button ghost" title="重新读取配置 (r)">刷新</button>
+        <button type="button" id="open-dir" class="button ghost">打开配置目录</button>
+      </div>
+    </header>
+
+    <section class="view" id="view-models" aria-label="模型">
+      <nav class="scopes" id="scopes" aria-label="筛选范围"></nav>
+      <div class="search-row">
+        <input id="search" type="search" placeholder="搜索模型…" autocomplete="off" spellcheck="false" aria-label="搜索模型">
+        <span class="count" id="count"></span>
+      </div>
+      <main class="content">
+        <section class="list" id="list" role="listbox" tabindex="0" aria-label="模型列表"></section>
+        <aside class="detail" aria-label="模型详情">
+          <h2>详情</h2>
+          <div id="detail"></div>
+        </aside>
+      </main>
+    </section>
+
+    <section class="view" id="view-sites" aria-label="站点" hidden>
+      <div class="split">
+        <div class="side">
+          <div class="side-head">
+            <h2>站点</h2>
+            <button type="button" id="site-new" class="button small">新建</button>
+          </div>
+          <div class="side-list" id="provider-list" role="listbox" aria-label="站点列表"></div>
+        </div>
+        <div class="pane" id="site-pane">
+          <div class="empty" id="site-empty">
+            <strong>选择一个站点</strong>
+            <span>左侧选择已有站点，或新建一个第三方 API 站点。</span>
+          </div>
+          <div id="site-body" hidden>
+            <div class="pane-head">
+              <h2 id="site-title">站点</h2>
+              <span class="badge" id="site-default" hidden>默认</span>
+            </div>
+            <form id="provider-form" autocomplete="off">
+              <div class="field-grid">
+                <label class="field">
+                  <span>站点 id</span>
+                  <input id="f-provider" name="provider" maxlength="64" spellcheck="false" required>
+                </label>
+                <label class="field">
+                  <span>显示名称</span>
+                  <input id="f-name" name="name" maxlength="120" spellcheck="false" placeholder="可留空">
+                </label>
+                <label class="field span2">
+                  <span>Base URL</span>
+                  <input id="f-baseurl" name="baseUrl" maxlength="2048" spellcheck="false" placeholder="https://example.com/v1" required>
+                </label>
+                <label class="field">
+                  <span>协议</span>
+                  <select id="f-api" name="api">
+                    <option value="openai-completions">OpenAI Chat Completions</option>
+                    <option value="openai-responses">OpenAI Responses</option>
+                    <option value="anthropic-messages">Anthropic Messages</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Key</span>
+                  <input id="f-key" name="key" type="password" maxlength="512" autocomplete="off" spellcheck="false" placeholder="留空则不修改">
+                </label>
+              </div>
+              <label class="check">
+                <input type="checkbox" id="f-discover">
+                <span>保存前探测模型（新站点默认开启）</span>
+              </label>
+              <div class="form-actions">
+                <button type="submit" class="button primary">保存站点</button>
+                <button type="button" id="site-delete" class="button danger">删除站点</button>
+                <span class="hint" id="site-hint"></span>
+              </div>
+            </form>
+
+            <div class="card">
+              <div class="card-head">
+                <h3>凭据</h3>
+                <button type="button" id="key-clear" class="button small danger">清除 Key</button>
+              </div>
+              <p class="muted" id="key-status">未配置</p>
+            </div>
+
+            <div class="card">
+              <div class="card-head">
+                <h3>模型</h3>
+                <button type="button" id="model-add" class="button small">添加模型</button>
+              </div>
+              <div class="table-wrap">
+                <table class="table">
+                  <thead>
+                    <tr><th>模型</th><th>上下文</th><th>最大输出</th><th>成本</th><th>来源</th><th></th></tr>
+                  </thead>
+                  <tbody id="model-rows"></tbody>
+                </table>
+              </div>
+              <p class="muted" id="models-empty" hidden>这个站点还没有模型。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-auto" aria-label="自动路由" hidden>
+      <div class="page">
+        <div class="page-head">
+          <h2>自动路由</h2>
+          <span class="badge" id="auto-state">读取中</span>
+        </div>
+        <p class="muted">按任务描述自动选择档位。保存后 pi 的下一轮请求即读取新配置，无需重启。</p>
+        <form id="auto-form" class="auto-form" autocomplete="off">
+          <div class="card">
+            <div class="card-head"><h3>基本设置</h3></div>
+            <div class="check-row">
+              <label class="check"><input type="checkbox" id="auto-enabled"> 启用自动路由</label>
+              <label class="check"><input type="checkbox" id="auto-retry"> 失败重试升一档</label>
+              <label class="check"><input type="checkbox" id="auto-thinking"> 使用模型页的思考等级</label>
+            </div>
+            <div class="field-grid">
+              <label class="field"><span>固定档位</span>
+                <select id="auto-pinned">
+                  <option value="">不固定（按任务分类）</option>
+                  <option value="cheap">轻量 · cheap</option>
+                  <option value="standard">标准 · standard</option>
+                  <option value="strong">强力 · strong</option>
+                </select>
+              </label>
+              <label class="field"><span>轻量阈值（分数 ≤）</span>
+                <input id="auto-cheap-threshold" type="number" min="0" max="1" step="0.01">
+              </label>
+              <label class="field"><span>强力阈值（分数 ≥）</span>
+                <input id="auto-strong-threshold" type="number" min="0" max="1" step="0.01">
+              </label>
+            </div>
+            <p class="muted" id="auto-thresholds"></p>
+            <p class="muted">开启“使用模型页的思考等级”后，实际思考等级以模型页配置为准，会覆盖 <code>pmh/auto:high</code> 这类请求。</p>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h3>档位模型</h3></div>
+            <div class="table-wrap">
+              <table class="table">
+                <thead><tr><th>档位</th><th>模型</th><th>说明</th></tr></thead>
+                <tbody id="auto-tiers"></tbody>
+              </table>
+            </div>
+            <p class="muted">未配置的档位会向邻近档位回退；档位只能选择 models.json 中已存在的模型。</p>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h3>项目级固定档</h3></div>
+            <p class="muted">键为项目目录名或绝对路径，精确匹配，不支持通配符。扩展按 pi 启动目录判断，未命中时使用全局设置。</p>
+            <div class="table-wrap">
+              <table class="table">
+                <thead><tr><th>项目</th><th>档位</th><th></th></tr></thead>
+                <tbody id="auto-projects"></tbody>
+              </table>
+            </div>
+            <p class="muted" id="auto-projects-empty" hidden>还没有项目级规则。</p>
+            <div class="auto-project-add">
+              <label class="field"><span>目录名 / 绝对路径</span>
+                <input id="auto-project-key" maxlength="260" spellcheck="false" placeholder="my-project">
+              </label>
+              <label class="field"><span>档位</span>
+                <select id="auto-project-tier">
+                  <option value="cheap">轻量 · cheap</option>
+                  <option value="standard" selected>标准 · standard</option>
+                  <option value="strong">强力 · strong</option>
+                </select>
+              </label>
+              <button type="button" class="button" id="auto-project-add">添加</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h3>分类预览</h3></div>
+            <div class="field-grid">
+              <label class="field span2"><span>任务描述</span>
+                <textarea id="auto-preview-text" rows="3" maxlength="4000" placeholder="例如：重构整个项目的并发处理"></textarea>
+              </label>
+              <label class="field"><span>项目（可选）</span>
+                <input id="auto-preview-project" maxlength="260" spellcheck="false" placeholder="my-project">
+              </label>
+            </div>
+            <div class="row-actions auto-preview-actions">
+              <button type="button" class="button" id="auto-preview-btn">预览路由</button>
+            </div>
+            <div id="auto-preview" class="auto-preview" hidden></div>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="button primary" id="auto-save">保存自动路由</button>
+            <span class="hint" id="auto-issues"></span>
+          </div>
+        </form>
+
+        <div class="card">
+          <div class="card-head"><h3>可用模型</h3></div>
+          <div id="auto-models" class="auto-models"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-usage" aria-label="用量" hidden>
+      <div class="page">
+        <div class="page-head">
+          <h2>用量</h2>
+          <span class="badge" id="usage-state">读取中</span>
+        </div>
+        <p class="muted">只读扫描 pi 的会话记录；费用优先取记录里的实际值，其次 models.json，最后内置价格快照。</p>
+        <div class="usage-controls">
+          <label class="field"><span>范围</span>
+            <select id="usage-range">
+              <option value="today">今日</option>
+              <option value="7d" selected>最近 7 天</option>
+              <option value="30d">最近 30 天</option>
+              <option value="all">全部</option>
+            </select>
+          </label>
+          <label class="field"><span>维度</span>
+            <select id="usage-group">
+              <option value="day" selected>按日</option>
+              <option value="provider">按站点</option>
+              <option value="model">按模型</option>
+              <option value="project">按项目</option>
+            </select>
+          </label>
+          <label class="field"><span>分支</span>
+            <select id="usage-branch">
+              <option value="all" selected>全部（含放弃分支）</option>
+              <option value="active">仅活动分支</option>
+            </select>
+          </label>
+          <button type="button" class="button" id="usage-refresh">刷新</button>
+        </div>
+        <div class="cards" id="usage-cards"></div>
+        <div class="card">
+          <div class="card-head">
+            <h3>分组明细</h3>
+            <span class="muted" id="usage-note"></span>
+          </div>
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>分组</th><th class="num">输入</th><th class="num">输出</th>
+                  <th class="num">缓存读</th><th class="num">缓存写</th>
+                  <th class="num">合计</th><th class="num">费用</th>
+                </tr>
+              </thead>
+              <tbody id="usage-rows"></tbody>
+            </table>
+          </div>
+          <p class="muted" id="usage-empty" hidden>所选范围内没有会话记录。</p>
+        </div>
+        <div class="card" id="usage-missing-card" hidden>
+          <div class="card-head"><h3>缺少价格的模型</h3></div>
+          <p class="muted">以下记录没有可用价格，费用未计入。可在「模型」页补 cost 字段。</p>
+          <div class="table-wrap">
+            <table class="table">
+              <thead><tr><th>模型</th><th class="num">Token</th><th class="num">记录</th></tr></thead>
+              <tbody id="usage-missing"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="status" id="status">
+      <span id="status-text"></span>
+      <span id="agent-dir" class="agent-dir"></span>
+    </footer>
+  </div>
+
+  <dialog id="dialog" class="dialog">
+    <div id="dialog-form">
+      <h2 id="dialog-title">编辑</h2>
+      <div id="dialog-body"></div>
+      <div class="dialog-actions">
+        <button type="button" class="button" id="dialog-cancel">取消</button>
+        <button type="button" class="button primary" id="dialog-ok">确定</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

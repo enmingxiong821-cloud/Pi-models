@@ -128,6 +128,10 @@ pmh install-extension --link     # recommended: register as a pi package, load i
 `--link` only adds this repository to pi's `settings.json`; nothing is copied and pi itself is never
 modified. After `git pull` or a code change, restart pi. Copy mode suits checkouts that don't stay around.
 
+For a standalone full-screen panel, run `pmh console` (bare `pmh` in an interactive terminal also
+opens it). Search, favorites, group/recent filters, and model details are all in one view; `Enter`
+sets the default and `f` toggles a favorite. Non-TTY environments fall back to a hint instead of waiting.
+
 Run `/reload` (or restart pi), then:
 
 | Action | Effect |
@@ -188,6 +192,26 @@ Config lives in `~/.pi/agent/extension-settings/pmh-auto.json`, **contains no ke
 every request, so most changes need no reload. If no tier is configured it falls back to the current
 available model with a one-time notice instead of failing.
 
+### Project pins and per-model thinking (v0.7)
+
+The Auto routing tab edits the three tier models, both thresholds, retry escalation and the pinned
+tier. Before saving it verifies that each model exists, that `0 ≤ cheap < strong ≤ 1`, and that
+`pmh/auto` is never used as a tier. A preview box classifies a sample task and shows the score,
+classified tier, effective tier and target model without writing anything or switching models.
+
+- **Project pins** map a directory basename or absolute path to one tier (for example
+  `pi-model → strong`). Matching is exact; globs, regex and parent-directory lookup are not
+  supported. A miss falls back to the global pin and then to normal classification.
+- **useModelThinking**, when enabled, reads `modelThinkingLevels["provider/model"]` from
+  `settings.json` after the physical model is chosen and overrides the requested thinking level;
+  missing or invalid values keep the request level. It conflicts with pi's
+  `--model pmh/auto:high`: the explicit level is overridden while the switch is on, so turn it off
+  when you need to force a level for one session.
+
+```bash
+pmh auto status --json   # includes useModelThinking and projects for scripting
+```
+
 ### Staying compatible with pi updates
 
 `pmh` never patches pi itself; it only uses pi's extension/package mechanisms. On every session start
@@ -208,6 +232,51 @@ commands, session hooks):
 pmh auto doctor     # terminal check: pi version, extension API, install mode, source repo, stale files
 pmh auto sync       # manual sync in copy mode (usually automatic on startup)
 ```
+
+## Desktop app
+
+Prefer a GUI for sites, models and thinking levels:
+
+```bash
+npm install            # first run only; installs Electron and the packager (dev dependencies)
+npm run desktop        # launch the app
+npm run desktop:dist:win     # Windows: installer + portable
+npm run desktop:dist:mac     # macOS: dmg + zip (Intel / Apple silicon)
+npm run desktop:dist:linux   # Linux: AppImage + deb
+```
+
+Run each packaging command on its own OS. Official releases are built by GitHub Actions on
+separate Windows, macOS and Linux runners, which avoids cross-build signing and runtime issues.
+
+### Direct downloads
+
+| System | Files |
+|---|---|
+| Windows 10/11 x64 | `pmh-<version>-setup-x64.exe`, `pmh-<version>-portable-x64.exe` |
+| macOS Intel | `pmh-<version>-mac-x64.dmg` / `.zip` |
+| macOS Apple silicon | `pmh-<version>-mac-arm64.dmg` / `.zip` |
+| Linux x64 | `pmh-<version>-linux-<arch>.AppImage` / `.deb` |
+
+The desktop builds are not code-signed: on macOS use right-click → Open the first time; on Linux
+run `chmod +x` on the AppImage. The CLI remains plain Node — `install.ps1` on Windows,
+`install.sh` on macOS/Linux.
+
+Four tabs:
+
+| Tab | What it does |
+|---|---|
+| Models | Search, favorites, filter by site/recent; double-click to switch; set the thinking level (inherit / off…max) and see the cost tier |
+| Sites | Create, edit and delete third-party sites; discover models; add/override/remove models; replace or clear the key |
+| Auto routing | Toggle, pin a tier, edit three tiers, thresholds, retry escalation, `useModelThinking` and project pins; validation results plus a task preview |
+| Usage | Aggregate session tokens, cache and cost for today / 7 / 30 days / all time; group by day, site, model or project and list unpriced models (read-only scan of `agent/sessions`) |
+
+Safety boundaries:
+
+- Keys are written only to `~/.pi/agent/auth.json` (`0600`, no plaintext backups), and the UI shows only
+  "configured · source · alias" — never the value.
+- Deleting a site or model requires typing its id (or `provider#model`) to confirm; the service re-checks.
+- The renderer has `nodeIntegration` off, `contextIsolation` and `sandbox` on, and talks to the service
+  layer only through a whitelisted IPC surface.
 
 ## Shell completion
 
@@ -251,7 +320,7 @@ Inside pi, `/feedback` gives you the same entry point.
 | `pmh model add <provider> <model-id> [--ctx 200k] [--max-output 64k] [--reasoning] [--image] [--cost-in 3 --cost-out 15]` | Add/replace a single model under any provider (built-in included), with metadata filled in |
 | `pmh model override <provider> <model-id> [...same flags]` | Change metadata only via `modelOverrides`; never touches `api`/`baseUrl` |
 | `pmh model rm <provider> <model-id> [--override-only]` | Remove a model entry or its override; an empty provider is cleaned up so pi won't reject it |
-| `pmh auto status [--json]` | Auto-routing config: switch, tier models, thresholds, config path |
+| `pmh auto status [--json]` | Auto-routing config: switch, tier models, thresholds, project pins, `useModelThinking`, config path |
 | `pmh auto set <cheap\|standard\|strong> <provider#model>` | Assign a tier; multiple pairs at once: `auto set cheap=crow5#mini strong=crow5#opus` |
 | `pmh auto on\|off` / `unset <tier>` / `pin <tier\|off>` / `thresholds <cheap> <strong>` | Toggle, clear a tier, pin a tier, tune thresholds |
 | `pmh auto explain <task> [--json]` | Preview the tier and model that would be used (no switching) |
@@ -263,12 +332,14 @@ Inside pi, `/feedback` gives you the same entry point.
 | `pmh key ls\|add\|use\|rm` | Named key aliases: `key add crow5 backup sk-…`, `key use crow5 backup` |
 | `pmh ls [--models] [--group <g>] [--json]` | List providers, credential source, default model |
 | `pmh current [--json] [--format template]` | One-line current-model summary, local only; `--format '{{provider}}/{{model}}'` customizes the output (alias `status`) |
+| `pmh usage [--since today\|7d\|30d\|YYYY-MM-DD\|all] [--group-by day\|provider\|model\|project] [--branch all\|active] [--project name] [--json]` | Read-only token, cache and cost stats from pi sessions; all branches by default, `--branch active` only follows the current branch |
 | `pmh use [name[#model] \| keyword \| @group [keyword] \| @fav \| recent]` | Set the default; no argument opens an arrow-key picker; `-` toggles back to the previous CLI-set default |
 | `pmh group ls\|add\|rm` / `pmh relay group <name> <group\|->` | Workspace groups |
 | `pmh fav add\|rm\|toggle <name>#<model>` / `pmh fav ls` | Favorites, shared with `/switch @fav` |
 | `pmh recent [--limit N]` | Cross-relay recently used models |
 | `pmh meta <name> [--drift] [--verbose] [--json]` | Diff upstream `/v1/models` against your config (context, pricing, capabilities) |
 | `pmh pick [--run] [--filter @group]` | Arrow-key picker (optionally launches pi) |
+| `pmh console` (alias `ui`) | Full-screen model console: search, favorites, group/recent filters, model details, and switching the default; bare `pmh` opens it in an interactive terminal |
 | `pmh run [name[#model] \| keyword \| @group [keyword]] [-- <pi args>]` | Launch pi on that model |
 | `pmh test <name> [--model id] [--no-chat]` | Probe `/v1/models` and send one minimal request |
 | `pmh scope <pattern...>` / `--clear` | Restrict pi's `Ctrl+P` cycling range |
@@ -316,7 +387,7 @@ Everything stays inside pi's own config directory (`~/.pi/agent`, override with
 | `auth.json` | `{ "<name>": { "type": "api_key", "key": "..." }, "<name>@<alias>": {...} }` |
 | `settings.json` | `defaultProvider` / `defaultModel` / `defaultThinkingLevel` / `enabledModels` |
 | `pmh-relays.json` | Ops metadata only — groups, tags, favorites, MRU, key aliases, metadata sources; **no secrets** |
-| `extension-settings/pmh-auto.json` | Auto-routing switch, tier models, thresholds, pinned tier; **no secrets** |
+| `extension-settings/pmh-auto.json` | Auto-routing switch, tier models, thresholds, pinned tier, project pins, `useModelThinking` (v2); **no secrets** |
 
 Every write is backed up as `*.bak-<timestamp>` first, so you can always roll back (high-frequency
 MRU updates excepted). Losing `pmh-relays.json` is harmless: `pmh ls` and the extension rebuild it

@@ -1,0 +1,47 @@
+appId: com.enmingxiong821.pmh
+productName: pmh
+copyright: Copyright © 2026 enmingxiong821-cloud
+directories:
+  output: release
+  buildResources: build
+files:
+  - electron/**
+  - src/**
+  - extensions/**
+  - package.json
+  - LICENSE
+asar: true
+npmRebuild: false
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  artifactName: pmh-${version}-setup-${arch}.${ext}
+portable:
+  artifactName: pmh-${version}-portable-${arch}.${ext}
+mac:
+  icon: build/icon.png
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+    - target: zip
+      arch: [x64, arm64]
+  category: public.app-category.developer-tools
+  artifactName: pmh-${version}-mac-${arch}.${ext}
+linux:
+  icon: build/icon.png
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]
+  category: Development
+  maintainer: enmingxiong821-cloud <enmingxiong821-cloud@users.noreply.github.com>
+  artifactName: pmh-${version}-linux-${arch}.${ext}
