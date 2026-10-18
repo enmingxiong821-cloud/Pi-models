@@ -53,7 +53,7 @@ body:
     attributes:
       label: pmh 版本
       description: 运行 `pmh feedback --print`，查看 `pmh:` 那一行。
-      placeholder: "0.7.1"
+      placeholder: "0.7.2"
     validations:
       required: true
 
