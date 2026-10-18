@@ -93,16 +93,16 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --title "pmh $TAG" \
               --notes "### 桌面端
-- Windows x64：安装版（setup）与便携版（portable）
-- macOS：Intel / Apple 芯片，dmg 与 zip
-- Linux x64：AppImage 与 deb
+              - Windows x64：安装版（setup）与便携版（portable）
+              - macOS：Intel / Apple 芯片，dmg 与 zip
+              - Linux x64：AppImage 与 deb
 
-### CLI
-- Windows：install.ps1
-- macOS / Linux：install.sh
-- 也可以使用 npm i -g pmh-cli
+              ### CLI
+              - Windows：install.ps1
+              - macOS / Linux：install.sh
+              - 也可以使用 npm i -g pmh-cli
 
-桌面端未做代码签名。macOS 首次打开请右键 → 打开；Linux 的 AppImage 需要先 chmod +x。完整更新内容见 CHANGELOG.md。"
+              桌面端未做代码签名。macOS 首次打开请右键 → 打开；Linux 的 AppImage 需要先 chmod +x。完整更新内容见 CHANGELOG.md。"
           fi
           find dist -type f \( \
             -name '*.exe' -o -name '*.blockmap' -o \
